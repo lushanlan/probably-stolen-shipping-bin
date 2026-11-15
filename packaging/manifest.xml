@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Manifest>
+  <ID>lushanlan.shipping_bin</ID>
+  <Name>出货箱</Name>
+  <Author>lushanlan</Author>
+  <ModVersion>0.1.0-dev</ModVersion>
+  <Description>可移动的出货箱容器：睡觉时统一出售箱内合法货物，多箱各自升级容量。候选版本，需实机验收，请勿用于正式存档。</Description>
+  <GameVersions />
+  <Prerequisites />
+  <Assemblies><Assembly>ShippingBin.dll</Assembly></Assemblies>
+  <Capabilities />
+</Manifest>

@@ -1,37 +1,126 @@
 using System;
+using HarmonyLib;
+
 namespace ShippingBin
 {
+    // 模组入口：只做装配，不承载规则。
+    //
+    // 分层：
+    //   src\Core\*  纯规则（无游戏类型，可在游戏外完整测试）
+    //   src\Game\*  游戏适配（物品工厂/结算事务/购买/赠送/本地化/配置）
+    //
+    // 生命周期（ModdingGuide 行 505-506）：Init -> OnEnable，读档时 hook 按
+    // Init->Early->Normal->Late 顺序触发。
     public sealed class ShippingBinMod : IMod
     {
-        internal const string ItemId = "shipping_bin_container";
-        internal static ConfigEntry<float> SaleMultiplier, StolenMultiplier;
-        internal static ConfigEntry<bool> AllowStolen, AllowContraband, HalfAt100, ExemptAt200, EarlyUnlock, DebugGrant;
+        internal static string ModId;
+        internal static ModLog Log;
+        internal static ModSettings SettingsRef;
+        private static Harmony harmony;
+        private static bool purchaseRegistered;
+
         public void Init(ModManifest manifest)
         {
-            var config = ModHelper.GetConfig(manifest.ID);
-            SaleMultiplier = config.Define("sale_multiplier", 0.8f, "出货", () => "出售倍率", 0f, 10f, () => "按物品当前显示估值计算。", false);
-            StolenMultiplier = config.Define("stolen_multiplier", 2f, "出货", () => "赃物涉案倍率", 0f, 10f, () => "以原版基础涉案金额为基准。", false);
-            AllowStolen = config.Define("allow_stolen", true, "出货", () => "允许赃物", null, false);
-            AllowContraband = config.Define("allow_contraband", true, "出货", () => "允许违禁品", null, false);
-            HalfAt100 = config.Define("half_at_100", true, "出货", () => "黑市声望100减半", null, false);
-            ExemptAt200 = config.Define("exempt_at_200", true, "出货", () => "黑市声望200豁免", null, false);
-            EarlyUnlock = config.Define("early_unlock", false, "获取", () => "买店前开放购买", null, false);
-            DebugGrant = config.Define("debug_grant", false, "调试", () => "新局赠送出货箱", null, false);
+            ModId = manifest.ID;
+            Log = new ModLog(manifest);
+            Loc.Init(ModId);
+
+            SettingsRef = new ModSettings();
+            SettingsRef.DefineAll(ModId);
         }
-        public void OnEnable() { ModHook.OnModItemDirectoryInit += RegisterItems; }
-        public void OnDisable() { ModHook.OnModItemDirectoryInit -= RegisterItems; }
-        private void RegisterItems(ModItemDirectory directory) { directory.Add(ItemId, CreateBin); }
-        private GameItem CreateBin()
+
+        public void OnEnable()
         {
-            var window = DirectoryUtils.CreateInventoryWindow(6, 6, true);
-            GameItem item = ItemDirectory.CreateEmptyItem(ItemId);
-            item.SetContentWindow(window.Item1);
-            item.SetSpriteAndShape("Items/items_container", "eleanor_box");
-            item.name = "出货箱";
-            item.shortDescription = "睡觉时出售箱内货物。";
-            item.unitValue = 0;
-            ContainerHelper.InitBackpackItem(window.Item2, item);
-            return item;
+            ModHook.OnModItemDirectoryInit += RegisterItems;
+            ModHook.OnNewGameStarted += OnNewGameStarted;
+            ModHook.OnGameLoadedLate += OnGameLoadedLate;
+            ModHook.OnWakingUpLate += TryDebugGrant;
+            ModHook.OnGoingSleepEarly += OnGoingSleep;
+            ModHook.OnModAssetsLoaded += OnAssetsLoaded;
+
+            harmony = new Harmony(ModId);
+            Purchase.Patch(harmony);
+        }
+
+        public void OnDisable()
+        {
+            ModHook.OnModItemDirectoryInit -= RegisterItems;
+            ModHook.OnNewGameStarted -= OnNewGameStarted;
+            ModHook.OnGameLoadedLate -= OnGameLoadedLate;
+            ModHook.OnWakingUpLate -= TryDebugGrant;
+            ModHook.OnGoingSleepEarly -= OnGoingSleep;
+            ModHook.OnModAssetsLoaded -= OnAssetsLoaded;
+            purchaseRegistered = false;
+
+            ModHelper.RemoveNetworkUpgrades(ModId);
+
+            if (harmony != null)
+            {
+                harmony.UnpatchAll(ModId);
+                harmony = null;
+            }
+        }
+
+        internal static void WriteLog(string message)
+        {
+            if (Log != null && !string.IsNullOrEmpty(message))
+            {
+                Log.Warning(message);
+            }
+        }
+
+        // 本地化文件在 Init/OnEnable 之后才加载（ModdingGuide 行 443），
+        // 所以购买项要等到资产全部就绪再注册，否则副标题会显示成键名。
+        private static void OnAssetsLoaded(LoadedMod mod)
+        {
+            if (purchaseRegistered || mod == null || mod.Manifest == null || mod.Manifest.ID != ModId)
+            {
+                return;
+            }
+            purchaseRegistered = true;
+            Purchase.Register(ModId);
+        }
+
+        private static void RegisterItems(ModItemDirectory directory)
+        {
+            if (directory == null)
+            {
+                return;
+            }
+            directory.Add(ModIds.ItemIdentifier, BinItem.Create);
+        }
+
+        private static void OnNewGameStarted(string scenarioId)
+        {
+            DebugGrant.OnNewGame(SettingsRef);
+        }
+
+        private static void TryDebugGrant()
+        {
+            DebugGrant.TryGrant(SettingsRef);
+        }
+
+        // 读档后补提交上次没落地完的记账义务（涉案/假标签）。
+        private static void OnGameLoadedLate()
+        {
+            TryDebugGrant();
+            try
+            {
+                PendingLedger.Recover(PlayerStore.Instance);
+            }
+            catch (Exception ex)
+            {
+                WriteLog("ledger recovery on load failed: " + ex);
+            }
+        }
+
+        private static void OnGoingSleep()
+        {
+            // 睡前最后时机：先补发尚未成功的调试赠箱，再统一结算。
+            // 结算挂在 OnGoingSleepEarly 是因为它在 EndNight 最前，且结果会被
+            // 稍后的 BeginDay -> SaveGame 一并写入存档（IL 已证实）。
+            DebugGrant.TryGrant(SettingsRef);
+            NightSettlement.Run(SettingsRef);
         }
     }
 }

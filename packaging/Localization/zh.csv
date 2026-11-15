@@ -1,0 +1,76 @@
+item_name,出货箱
+item_description,睡觉时会统一出售箱内合法货物的容器。放进去的东西睡前还可以取回。
+purchase_title,出货箱
+purchase_description,购买一个出货箱，每天限购一次。
+purchase_subtitle,购买出货箱
+purchase_already_bought,今天已经买过了
+purchase_ok,买到了一个出货箱。
+purchase_failed,背包放不下，本次购买已回滚，钱和恩惠都不会损失。
+purchase_no_space,背包空间不足，无法购买出货箱。
+debug_grant_ok,调试模式：已赠送一个出货箱。
+debug_grant_pending,调试模式：背包空间不足，出货箱将在之后自动补发。
+upgrade_max,这个出货箱已经升到满级了。
+upgrade_ok,出货箱容量提升到 {0}x{0}。
+upgrade_overflow,出货箱已满级，多出的 {0} 点升级进度无法继续使用（上限 {1}）。
+log_sold,出货箱：卖出 {0} 件，收入 {1}。
+log_retained,出货箱：保留 {0} 件未出售。
+log_retained_reason,未出售：{0} —— {1}
+log_crime,出货箱：涉案金额 {0}
+log_mislabel,出货箱：假贴标扣除黑市声望 {0}（涉案基数 {1}）
+log_list_separator,、
+log_overflow_retry,出货箱：金额超出安全范围，本次不结算，货物已保留。
+log_commit_failed,出货箱：结算未能完成，货物已尽量放回。
+log_commit_item,出货箱：出问题的物品是 {0}
+log_commit_partial,出货箱：已按 {0} 件、收入 {1} 记账，其余已放回箱内
+log_commit_rolled_back,出货箱：已回滚 {0} 件，钱和货物都没有变化
+log_commit_rollback_failed,出货箱：回滚没有完全成功，请手动检查箱内货物
+log_commit_rollback_incomplete,出货箱：有 {0} 件未能确认放回（{1}）
+log_commit_not_settled,出货箱：本次没有写入结算标记，同一晚再次睡觉会重试
+log_commit_ledger_failed,出货箱：涉案或假标签记账未全部落地，将在下次进游戏时补提交
+log_ledger_pending_retry,出货箱：第 {0} 晚仍有未落地的记账，先补提交再结算（本次不出售）
+log_ledger_recovered,出货箱：已补提交第 {0} 晚遗留的记账（{1} 件，{2} 金）
+log_commit_plan_failed,出货箱：生成本次结算计划失败
+log_commit_invalid_plan,出货箱：结算计划无效，本次未提交
+log_commit_revalidate_failed,出货箱：结算前校验失败
+log_commit_detach_failed,出货箱：从箱中取出货物失败
+log_commit_verify_failed,出货箱：取出后校验失败
+log_commit_pay_failed,出货箱：付款失败
+log_commit_destroy_failed,出货箱：销毁已售货物失败
+log_commit_crime_failed,出货箱：提交涉案记录失败
+log_commit_mislabel_failed,出货箱：提交假贴标声望失败
+log_commit_settle_failed,出货箱：写入结算标记失败
+warn_front_counter_rescued,{0} 原本放在前柜台，已自动搬回背包（前柜台物品会在睡觉时消失）。
+warn_front_counter_unrescued,{0} 在前柜台且背包已满，请手动取回，否则睡觉时会消失。
+warn_unsaved_location,{0} 所在的位置不会随存档保存，建议搬回背包。
+reason_null_item,物品不存在
+reason_shipping_bin,出货箱本身不会出售
+reason_locked,物品处于上锁状态
+reason_quest,剧情关键物品
+reason_protected_item,原版禁售或危险废物
+reason_stolen_off,设置里关闭了赃物出售
+reason_contraband_off,设置里关闭了违禁品出售
+reason_not_owned,不是你的物品
+reason_no_value,估值不足
+reason_overflow,金额超出安全范围
+reason_unknown,未知原因
+crime_fencing,销赃
+crime_drug_trafficking,毒品
+crime_weapon_trafficking,武器
+crime_card_trafficking,证件
+crime_contraband_trafficking,违禁品
+cfg_sale_multiplier,出售倍率
+cfg_sale_multiplier_tip,按物品当前状态显示的估值乘以该倍率（0.0 到 5.0，默认 0.8）。
+cfg_stolen_multiplier,赃物涉案倍率
+cfg_stolen_multiplier_tip,以原版基础涉案金额为基准（0.0 到 10.0，默认 2.0）。原版 STOLEN_VALUE_INT 是百分比，不是倍率。
+cfg_allow_stolen,允许出售赃物
+cfg_allow_stolen_tip,关闭后箱内赃物整件保留并说明原因。
+cfg_allow_contraband,允许出售违禁品
+cfg_allow_contraband_tip,关闭后箱内违禁品整件保留并说明原因。
+cfg_half_at_100,黑市声望 100 时涉案减半
+cfg_half_at_100_tip,以整晚开始时的黑市声望判定，门槛固定为 100。
+cfg_exempt_at_200,黑市声望 200 时涉案全免
+cfg_exempt_at_200_tip,两档同时满足时全免优先；关闭本项后 200 仍按减半处理。
+cfg_early_unlock,买店前就显示购买项
+cfg_early_unlock_tip,默认关闭，只在买下店铺后才显示。打开只影响本模组自己的入口。
+cfg_debug_grant,调试模式：新局赠送出货箱
+cfg_debug_grant_tip,默认关闭。每个新开局只赠送一次，普通读档不会重复；空间不足会保留并重试。
