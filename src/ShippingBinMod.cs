@@ -37,10 +37,12 @@ namespace ShippingBin
             ModHook.OnWakingUpLate += TryDebugGrant;
             ModHook.OnGoingSleepEarly += OnGoingSleep;
             ModHook.OnModAssetsLoaded += OnAssetsLoaded;
+            ModHook.OnCreateTooltipLate += BinTooltip.Append;
 
             harmony = new Harmony(ModId);
             Purchase.Patch(harmony);
             BinOpenHook.Patch(harmony);
+            UpgradeDragPatch.Patch(harmony);
         }
 
         public void OnDisable()
@@ -51,6 +53,7 @@ namespace ShippingBin
             ModHook.OnWakingUpLate -= TryDebugGrant;
             ModHook.OnGoingSleepEarly -= OnGoingSleep;
             ModHook.OnModAssetsLoaded -= OnAssetsLoaded;
+            ModHook.OnCreateTooltipLate -= BinTooltip.Append;
             purchaseRegistered = false;
 
             ModHelper.RemoveNetworkUpgrades(ModId);

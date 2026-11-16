@@ -625,3 +625,321 @@ DLL 由 csc 非确定性编译，每次重建哈希都会变；manifest 与本�
 - 16×30/32×30 的窗口在低分辨率下的可读性仍未实机验证；`PixelWindow` 无滚动。
 - `GridShape` 在本机 csc 中是 unsupported type，无法做逐格碰撞判定；迁移完全依赖“取出—重塑—逐件放回”的真实 API 行为。
 - 打开箱子的 Harmony prefix 只在 `ItemMouseDoubleClickHandler.OpenContentAction` 上；若某条路径绕过它（例如脚本直接 Show），待扩容会推迟到睡觉。
+
+## 11. 第 7 轮：物品说明动态显示升级进度
+
+用户要求（m02220）：实机反馈“目前测试看起来没问题”，新增一项小改动——物品说明/tooltip 动态显示**每箱**累计升级点数、下一档累计阈值（25/100/300）与**当前实际容量**；满级显示已满级与累计点数；有待扩容时说明“待扩容 + 实际容量”，不能把目标尺寸当成已应用；保留原有说明；中英文官方本地化；必须核对本机 `GameItem` 动态描述/tooltip 原生机制。不改计价、容量与任何规则。
+
+### 11.1 原生机制证据（Cecil IL，`Assembly-CSharp.dll` 只读）
+
+- `GameItemElement.GetTooltipBasic() : RichTextBuilder` 的构建顺序：`GeneralHelper.CreateGeneralItemTooltip` → 各 `*Helper.CreateTooltip` → `ModInternal.CreateTooltipEarly(builder,item)`（IL_03e3，内部 `ModHook.FireOnCreateTooltipEarly`）→ `PlayerStore.devMode` 时的 `CreateDevTooltipEarly` → 其余 helper → `ModInternal.CreateTooltipLate(builder,item)`（IL_062d，内部 `ModHook.FireOnCreateTooltipLate`）→ `CreateDevTooltipLate` → **之后**（IL_0646 / IL_0672）才追加 `item.shortDescription` 与 `flavorText`。
+- `GetTooltipBasic` 的唯一调用者是 `GameItemElement.GetTooltip()` 与 `GetTooltipAdvanced()`，即**每次悬停都会重新构建**：不需要缓存，升级点数与容量变化会在下一次悬停时自然刷新。
+- `GameItem.SetExamineWindow` 全库**无调用者**；`ItemMouseDoubleClickHandler.OpenExamineAction` 只显示已经存在的 examineWindow。⇒ 物品“说明文本”的实际呈现位置就是 tooltip，因此本模组没有、也不需要新建检查窗口。
+- `RichTextBuilder.AddLine(string text, bool ignoreEmpty = true, RenderHandler.ColorPalette color = -1, ...)` 后的参数都有默认值，模组可直接 `builder.AddLine(text)`。
+
+### 11.2 实现
+
+- 纯逻辑层 `src\Core\UpgradeStatus.cs`：`UpgradeStatusKind{Progress, MaxLevel, Pending}` 与 `UpgradeStatusLogic.Compute(points, actualW, actualH, pendingW, pendingH)`。规则：点数 < 0 归 0；实际宽高 <= 0 原样记为 0（不猜测）；pending 只有宽高都 > 0 才有效；**pending 优先于满级**；满级时下一档阈值为 0。
+- `src\Core\Rules.cs` 新增 `NextThresholdFor(points)`：从下标 1 开始（下标 0 的 `0` 是初始档，不是“下一档”），返回 25 / 100 / 300，满级返回 0；只用于文案，不参与计算。
+- `src\Game\BinTooltip.cs`：`BinTooltip.Append(RichTextBuilder, GameItem)`，只对出货箱生效；读取该箱自己的 points tag、实际容量（`BinItem.TryGetBinShapeSize`，由 `grid.widthPixels / UISettings.gridSize` 反推）与 `pending_shape`；键由 `UpgradeStatusLogic.TooltipKey` 选择（已知容量用 `tooltip_upgrade_{progress,max,pending}`，读取失败用对应 `*_unknown`），`builder.AddLine(...)`；异常只写日志，不影响原版 tooltip。
+- `src\ShippingBinMod.cs`：`OnEnable` 订阅 `ModHook.OnCreateTooltipLate += BinTooltip.Append`，`OnDisable` 反向退订。
+- 本地化：`zh.csv` / `en.csv` 各新增 6 键（85 键，键集一致）——三种状态各一条“已知容量”文案，外加对应的 `*_unknown` 变体（读取失败时显示“当前容量暂不可读取”）。三种文案都同时包含“点数、阈值/上限、容量”，pending 文案额外包含“待扩容目标 + 当前实际容量”，不会把目标尺寸说成已生效。
+
+### 11.3 状态矩阵
+
+| 状态 | 显示内容 |
+| --- | --- |
+| 未满级 | 累计 N 点；下一档 M 点；当前容量 W×H |
+| 已满级 | 已满级（N/300 点）；当前容量 W×H |
+| 有待扩容 | 累计 N 点（上限 300）；待扩容至 W2×H2，当前实际容量 W×H |
+| 实际容量读取失败 | 保留点数/下一档（或 pending 目标），容量位置显示“当前容量暂不可读取”，不显示任何推算尺寸 |
+
+### 11.4 真实验证（本轮）
+
+```text
+> pwsh -File .\build.ps1
+Built E:\SteamLibrary\steamapps\common\Probably Stolen\shipping-bin-mod\build\ShippingBin.dll
+> pwsh -File .\tools\test-rules.ps1
+[ok]   Rules / Protection / Planner / Commit / Ledger / CommitLedger
+[ok]   GrantPolicy / ShapeMigration / UpgradeStatus
+
+403 checks passed, 0 failed.
+All core rule tests passed (game integration NOT tested).
+PASS tools/test-rules.ps1 (game integration is NOT tested by this script)
+> pwsh -File .\package.ps1
+Included mod textures: ...\packaging\Textures
+Development package only: ...\build\package-dev
+> pwsh -File .\tools\scan.ps1
+Manifest ID=lushanlan.shipping_bin; Assemblies=ShippingBin.dll; Capabilities=
+Refused        : False
+Error          :
+MethodsScanned : 229
+Capabilities   : {}
+Findings       : {}
+HardFlags      : {}
+Pending        : {}
+```
+
+本地化键集校验：`zh` 85 键、`en` 85 键，键集完全一致；`tooltip_upgrade_progress/max/pending` 及对应 `*_unknown` 变体两边都存在。
+
+### 11.5 本轮包哈希（`build\package-dev`）
+
+| 文件 | 字节 | SHA-256 |
+| --- | --- | --- |
+| `manifest.xml` | 498 | `08656A2A07004D0635F997EC447EB8E9DC7AD618992F35F5F5F3FE7005D077EB` |
+| `ShippingBin.dll` | 68,096 | `E00EE5101D9325CA16F92F48A68C4A0B557C955E11A39D7CFED47058670AED4D` |
+| `Localization\zh.csv` | 6,207 | `71BC97148AF5D050EE06213EF1D45E96CD77329C694815408FCF61B87EC8C6B5` |
+| `Localization\en.csv` | 6,732 | `1F82FCB608E0D7F275561C1D8761DC90B2C70EB20255F0DC310309552D8CFA90` |
+| `Textures\Items\shipping_bin_v2.png` | 9,608 | `9749E6C3F3434395D960F51A6B718697F6C39E844BD04FF809ADE7E5FBDB03C5` |
+| `Textures\Items\shipping_bin.png` | 2,749 | `B3FF2B16C582429F1C256C649015AE0986F3226348D748538745BAB543AC6B33` |
+
+DLL 由 csc 非确定性编译，重建会变；manifest 与本地化/贴图哈希稳定。
+
+### 11.6 本轮改动文件
+
+- 新增：`src\Core\UpgradeStatus.cs`（状态判定纯逻辑）、`src\Game\BinTooltip.cs`（tooltip 追加）、`docs\il\tooltip.md`（机制证据）。
+- 修改：`src\Core\Rules.cs`（`NextThresholdFor`）、`src\Game\BinItem.cs`（`GetPendingSize`、`TryGetBinShapeSize`）、`src\Game\Loc.cs`（新增 4 参 / 6 参 `Get` 重载）、`src\ShippingBinMod.cs`（订阅/退订 `OnCreateTooltipLate`）、`build.ps1`（新增 2 个源文件）、`packaging\Localization\{zh,en}.csv`（+3 键）、`tests\CoreTests.cs`（+31 断言，`Run("UpgradeStatus", ...)`）、`README.md`、`docs\acceptance.md`、`docs\decisions-shipping-bin.md`、`docs\game-test-checklist.md`。
+
+### 11.7 需要实机验证（第 7 轮新增）
+
+1. 鼠标悬停出货箱：说明里出现“升级进度”行，点数、下一档、当前容量与实际情况一致。
+2. 拖 1 个废料（1 点）进箱子后重新悬停：点数与下一档立刻更新（无需重开游戏）。
+3. 两个箱子的点数不同时，悬停各自显示各自进度（每箱独立）。
+4. 满级箱子：显示“已满级（N/300）”，不显示下一档。
+5. 存在待扩容的箱子：显示“待扩容至 W2×H2，当前实际容量 W×H”，且实际容量不是目标尺寸。
+6. 存读档后再次悬停：点数与容量与存档前一致；贴图不变成 unknown。
+
+### 11.8 未解边界
+
+- 进度行通过 `OnCreateTooltipLate` 追加，按原版顺序位于 `shortDescription` **之前**；原说明仍然完整保留。若要严格显示在说明之后，需要改动原版 tooltip 构建，不在本模组范围内。
+- 实际容量通过 `grid.widthPixels / UISettings.gridSize` 反推；若因异常读不到网格，tooltip 显示“当前容量暂不可读取”，**不**用按点数推算的档位尺寸冒充实际值（pending 场景仍显示待扩容目标）。此分支已有规则层测试覆盖（`ActualKnown=false` 与 `*_unknown` 键选择）。
+- 本轮只做了规则层与构建/扫描验证；游戏内 tooltip 的实际排版（换行、颜色、与其它 mod 追加行的顺序）需实机确认。
+- 用户在本轮反馈“目前实机测试看起来没问题”（m02220），这只说明用户已验证过的部分功能可用，**不等于**全部需求矩阵或全部存档场景都已实机验收；本文件第 6/7 节的实机清单仍需逐项确认。
+
+---
+
+## 12. 第 8 轮：自动化料斗保护 + 次日报告销售额
+
+用户需求（m02433）：“游戏内我们需要用到出入货口来进行自动化。所以出货口不应该被卖掉。确认这一点。以及第二天的夜间报告上需要显示销售额。”
+
+### 12.1 自动化料斗不参与出售（IL 已证实）
+
+| 工厂方法 | identifier | 本地化名字 | tag |
+| --- | --- | --- | --- |
+| `HopperHelper.CreateIntake()` | `hopper_in` | 进料斗（`item_intake_hopper_name`） | `HOPPER_INTAKE_TAG` |
+| `HopperHelper.CreateOutlet()` | `hopper_out` | 出料斗（`item_outlet_hopper_name`） | `HOPPER_OUTLET_TAG` |
+
+- `HopperHelper.IsIntake` / `IsOutlet` 只按上述两个 tag 判断；描述证实进料斗会把所在库存送进出料斗所在库存，二者构成原版自动化链的两端。
+- 实现：`ModIds.TagHopperIntake/TagHopperOutlet/AutomationHopperIds`；`FactsBuilder.IsAutomationHopper`（tag 或 identifier 命中，tag 被剥离时仍可兜住）；`ItemFacts.IsAutomationHopper`；`RejectCode.AutomationHopper` + `reason_automation_hopper`；`Protection.SingleNodeCode` 顺序：空 → 自动化料斗 → 出货箱自身 → 锁 → 剧情物 → 机器/文档/普通重要物 → 赃物/违禁开关 → 非玩家物品。
+- 后代命中同样整根保留（复用既有“任一代被拒则整根保留”规则），夜间报告会在保留原因里显示“自动化传送料斗（进料斗/出料斗）不会被出售”。
+- 证据与复现命令见 [docs/il/quest-protection.md](il/quest-protection.md) §8。
+
+### 12.2 次日早间报告显示销售额（IL 已证实路径）
+
+- `PlayerStore.nightLogs` 是 `List<string>`；`AddNightLog(string)` 原样追加，`AddNightLog(string, hexColor)` 会包装成 `<color=#hex>…</color>`。
+- 夜间结算在 `OnGoingSleepEarly` 写入的日志不会被 `PlayerStore.BeginDay()` 清理；次日 `StartOfDayUIManager.OpenUI()` → `ShowMorningReport()` → `InitPanel()` 遍历**全部** `nightLogs` 生成行、随后 `nightLogs.Clear()`（所以报告只显示一次）。
+- 因此本轮把原来的单行“卖出 N 件，收入 M”拆成两行，明确显示销售额：
+  - `log_sold`（zh「出货箱：卖出 {0} 件。」/ en "Shipping bin: sold {0} items."）
+  - 新增 `log_sales_total`（zh「出货箱销售额：{0}。」/ en "Shipping bin sales: {0}."）
+
+### 12.3 真实验证
+
+```text
+> pwsh -File .\build.ps1
+Built E:\SteamLibrary\steamapps\common\Probably Stolen\shipping-bin-mod\build\ShippingBin.dll
+> pwsh -File .\tools\test-rules.ps1
+[ok] Rules / Protection / Planner / Commit / Ledger / CommitLedger / GrantPolicy / ShapeMigration / UpgradeStatus
+407 checks passed, 0 failed.
+All core rule tests passed (game integration NOT tested).
+PASS tools/test-rules.ps1 (game integration is NOT tested by this script)
+> pwsh -File .\package.ps1
+Included mod textures: ...\packaging\Textures
+Development package only: ...\build\package-dev
+> pwsh -File .\tools\scan.ps1
+Manifest ID=lushanlan.shipping_bin; Assemblies=ShippingBin.dll; Capabilities=
+Refused        : False
+MethodsScanned : 230
+Capabilities / Findings / HardFlags / Pending : {}
+```
+
+本地化：`zh` 与 `en` 各 87 键，键集完全一致（脚本校验 diff 为空）。
+
+### 12.4 包哈希（`build\package-dev`）
+
+| 文件 | 字节 | SHA-256 |
+| --- | --- | --- |
+| manifest.xml | 498 | `08656A2A07004D0635F997EC447EB8E9DC7AD618992F35F5F5F3FE7005D077EB` |
+| ShippingBin.dll | 68,608 | `D87682F0D8D746F463FC94B88290388FA66788DA93B75E354AF665DFB1FF0E55` |
+| Localization\en.csv | 6,840 | `8CFCB44F5BC4E12725EA127E8C442292158A2F9E73773F9EC057329EA60D71F2` |
+| Localization\zh.csv | 6,327 | `FF54A7CD71185D449FCE07016A2EB2ADD5C08B1C8FB6DFE01825F97FE87521C9` |
+| Textures\Items\shipping_bin_v2.png | 9,608 | `9749E6C3F3434395D960F51A6B718697F6C39E844BD04FF809ADE7E5FBDB03C5` |
+| Textures\Items\shipping_bin.png | 2,749 | `B3FF2B16C582429F1C256C649015AE0986F3226348D748538745BAB543AC6B33` |
+
+DLL 由 `csc.exe` 构建且无确定性选项，**重新构建会得到不同哈希**；manifest 与两张贴图稳定不变。
+
+### 12.5 本轮改动文件
+
+- `src\Core\ItemFacts.cs`（`RejectCode.AutomationHopper`、`ItemFacts.IsAutomationHopper`、`KeyFor`、判定顺序）
+- `src\Core\Rules.cs`（无改动，本轮未动数值）
+- `src\Game\ModIds.cs`（料斗 tag / identifier 表）
+- `src\Game\FactsBuilder.cs`（`IsAutomationHopper` 读取运行时 tag 与 identifier）
+- `src\Game\NightSettlement.cs`（`log_sold` 只报件数，新增 `log_sales_total` 行）
+- `packaging\Localization\zh.csv`、`en.csv`（`log_sales_total`、`reason_automation_hopper`，`log_sold` 文案调整）
+- `tests\CoreTests.cs`（根料斗、进料斗、后代料斗整根保留、reason key，共 +4 断言）
+- 文档：本文件 §12、`docs\il\quest-protection.md` §8、`docs\decisions-shipping-bin.md` 第八轮、`docs\game-test-checklist.md`、`README.md`
+
+### 12.6 实机清单
+
+- [ ] 把进料斗/出料斗放进出货箱，睡觉后两者仍在箱内，夜间报告保留原因显示“自动化传送料斗（进料斗/出料斗）不会被出售”。
+- [ ] 含有料斗的容器整体不被出售（容器与其后代一起保留）。
+- [ ] 正常卖出物品后，次日早间报告出现“出货箱：卖出 N 件。”与“出货箱销售额：M。”两行，金额与现金增加一致。
+- [ ] 报告只显示一次：关掉早间报告后再次查看不会重复出现同一批日志。
+
+### 12.7 未解边界
+
+- 只保护原版 `hopper_in` / `hopper_out`；其它模组自定义的“传送/自动化”物品若没有这两个 tag 或 identifier，不在保护范围。
+- 报告里的“销售额”仅指**本模组出货箱**的成交额，不含店内正常销售；店内销售由原版自己的日志展示。
+- 早间报告读取后即 `Clear()`，若同时安装了会在报告后追加日志的其它 mod，行顺序由各自的写入时机决定；本轮仅静态验证。
+- 料斗在游戏里的自动化运行（连接、每晚传送）未由本模组改动，需实机确认保护不影响其功能。
+
+## 13. 第 9 轮：金属拖拽升级修复、报告颜色、失败日志（2026-11-16，用户 m02627）
+
+### 13.1 问题与根因（IL 已证实）
+
+- 现象：把金属锭（或 junk / scrap_metal）拖到出货箱上不会升级；对出货箱"使用"金属同样无效。
+- 根因：原版拖拽在 `ItemMouseDragHandler.EndDrag` 里要求 `currentItem.MayTarget(lastItem)` **且** `currentItem.CanTarget(lastItem)` 才继续，然后才调用 `ItemBehaviourManager.Target` 与 `GameItem.Target(target)`。而金属锭在 `MaterialDirectory.MetalIngot()` 中给自己设置了 `mayThisTargetItemFunc` / `canThisTargetItemFunc = MaterialDirectory.CanIngotTarget`，后者是**写死白名单**：只允许 `vending_machine_core`、动物笼、水箱、RAS，其它目标一律返回显式 `false`。这个 `false` 在 `MayTarget/CanTarget` 的合成结果里否决了我们在**箱子一侧**设置的 `mayItemTargetThisFunc/canItemTargetThisFunc`，于是 `GameItem.Target` 根本不会被调用，挂在箱子上的 `onItemTargetThisFunc` 也就永远不触发。
+- 结论：不是容器谓词或点数/材料判断的问题，而是原版交互门的白名单先否决。
+
+### 13.2 修复
+
+- 新增 `src/Game/UpgradeDragPatch.cs`：Harmony postfix 挂在 `GameItem.MayTarget` 与 `GameItem.CanTarget` 上，只在"结果为 `false`、源物品是升级材料、目标确认是本模组出货箱、`BinItem.CanUpgrade` 为真"时把结果补成 `true`；其它情况完全不干预。首次补门时写一条模组日志 `upgrade drag gate overridden (...)`，便于排查。
+- 保留了原版完整调用链：仍是原版拖拽手势 → `GameItem.Target` → 箱子自己的 `onItemTargetThisFunc` → `DoUpgrade`（点数、材料消耗、Tinkerer 豁免、形状迁移、pending 重试全部沿用原逻辑）。
+- 接线：`build.ps1` 源文件清单加入该文件；`ShippingBinMod.OnEnable` 中 `UpgradeDragPatch.Patch(harmony)`（`OnDisable` 的 `UnpatchAll` 覆盖）。
+
+### 13.3 报告颜色与失败日志
+
+- `WriteNightReport`：`log_sold`（卖出件数）与 `log_sales_total`（销售额）颜色改为 `#000000`。
+- `WriteFailureReport`：不再调用 `PlayerStore.AddNightLog`，结算失败只写模组日志（`WriteLog`，包含阶段、原因、物品、已售件数、已付金额、是否开始付款、是否回滚、是否落 day、回滚未完成项），次日早间报告不再出现内部错误码。
+
+### 13.4 真实验证
+
+```text
+> pwsh -File .\build.ps1
+Built E:\SteamLibrary\steamapps\common\Probably Stolen\shipping-bin-mod\build\ShippingBin.dll
+> pwsh -File .\tools\test-rules.ps1
+[ok]   Rules / Protection / Planner / Commit / Ledger / CommitLedger / GrantPolicy / ShapeMigration / UpgradeStatus
+407 checks passed, 0 failed.
+All core rule tests passed (game integration NOT tested).
+PASS tools/test-rules.ps1 (game integration is NOT tested by this script)
+> pwsh -File .\package.ps1
+Included mod textures: ...\packaging\Textures
+Development package only: ...\build\package-dev
+> pwsh -File .\tools\scan.ps1
+Manifest ID=lushanlan.shipping_bin; Assemblies=ShippingBin.dll; Capabilities=
+Refused        : False
+MethodsScanned : 234
+Capabilities   : {}
+Findings       : {}
+HardFlags      : {}
+Pending        : {}
+```
+
+### 13.5 包哈希（`build/package-dev`）
+
+| 文件 | 大小 | SHA256 |
+| --- | --- | --- |
+| manifest.xml | 498 | `08656A2A07004D0635F997EC447EB8E9DC7AD618992F35F5F5F3FE7005D077EB` |
+| ShippingBin.dll | 69,632 | `F478896CFD18A9AC112310F09B41017D04BE938E7F0530918BCFA57AAFD0F703` |
+| Localization/en.csv | 6,840 | `8CFCB44F5BC4E12725EA127E8C442292158A2F9E73773F9EC057329EA60D71F2` |
+| Localization/zh.csv | 6,327 | `FF54A7CD71185D449FCE07016A2EB2ADD5C08B1C8FB6DFE01825F97FE87521C9` |
+| Textures/Items/shipping_bin_v2.png | 9,608 | `9749E6C3F3434395D960F51A6B718697F6C39E844BD04FF809ADE7E5FBDB03C5` |
+| Textures/Items/shipping_bin.png | 2,749 | `B3FF2B16C582429F1C256C649015AE0986F3226348D748538745BAB543AC6B33` |
+
+说明：csc 非确定性，DLL 每次重建哈希会变；manifest 与 csv 稳定。
+
+### 13.6 改动文件
+
+- 新增：`src/Game/UpgradeDragPatch.cs`、`docs/HANDOFF.md`。
+- 修改：`build.ps1`（源文件清单 +1）、`src/ShippingBinMod.cs`（注册补丁）、`src/Game/NightSettlement.cs`（报告颜色、失败只写日志）、`docs/settlement-handoff.md`（标注为历史文件）、`docs/acceptance.md`、`docs/decisions-shipping-bin.md`、`docs/game-test-checklist.md`、`README.md`。
+
+### 13.7 需要实机确认
+
+- [ ] 金属锭拖到出货箱：出现"容量提升"提示，点数 +5，材料被消耗（Tinkerer 20% 时可保留但点数仍加）。
+- [ ] junk / scrap_metal 同样可拖拽升级（+1 / +2）。
+- [ ] 把金属拖到普通物品或售货机上：行为与原版一致（仍只对白名单目标生效，不被本补丁影响）。
+- [ ] 次日早间报告里"卖出 N 件"与"销售额 M"为黑色字，且没有结算失败提示行。
+- [ ] 故意制造失败（例如把箱子放进前柜台场景）后查看模组日志，确认失败细节落在日志而不是报告中。
+
+### 13.8 未解边界
+
+- 拖拽门补丁只覆盖"源是三种升级材料、目标是本模组出货箱"这一种组合；其它模组物品若也复用金属白名单逻辑，不受影响也不会被顺带修好。
+- 报告颜色只改了本模组写入的两行，原版/其它模组的行保持原色。
+- 结算失败现在"只写日志"，若玩家不查看日志，可能不知道当晚没有结算成功（这是按用户要求做的取舍）。
+
+## 14. 第 10 轮：第 8/9 轮集成复核（2026-11-16，Codex 验收）
+
+本轮只做有边界的复核与修正，不新增玩法、不动 `art/`、不安装、不发布、不 push。
+
+### 14.1 UpgradeDragPatch 复核
+
+- 本机签名核对：`GameItem.MayTarget(GameItem targetItem)`、`GameItem.CanTarget(GameItem targetItem)`、`GameItem.Target(GameItem targetItem)` 的参数名都是 `targetItem`；补丁已改用 Harmony 的 `__0` 取参（`Postfix(GameItem __instance, GameItem __0, ref bool __result)`），不再依赖参数名。
+- 放行条件收窄并显式化：`Rules.MaterialPoints(source.identifier) > 0`（只可能是 junk / scrap_metal / metal_ingot）→ `BinItem.IsBin(target)` → `BinItem.CanUpgrade(source,target)`（双方 `IsItemEffectivelyOwned`、未满级或仍有 pending）。其它组合保持原版结果。
+- `GameItem.Target` 材料端副作用逐条审计（IL 已证实，补丁注释同步）：
+  - `source.onItemTargetItemFunc`：金属锭未设置；
+  - `target.onItemTargetItemFunc`：本模组箱子未设置；
+  - `source.onThisTargetItemFunc`：金属锭 = `MaterialDirectory.OnIngotTarget`，四个白名单分支（售货机核心/笼子/水箱/RAS）之外直接 `ret`，**不消耗材料**；
+  - `target.onItemTargetThisFunc`：本模组箱子 = `BinItem.DoUpgrade`，只在这里 `StartingPerkContent.ConsumeUpgradeMaterial` 一次；
+  - 四个 slot 版本回调：金属锭只设置 `may/canSelectSlotItemFunc`，未设置 `on*`；
+  - 结尾播放 `source.soundUse` 并刷新库存 UI。
+- `ItemMouseDragHandler.EndDrag` 会两次调用 `MayTarget/CanTarget`（IL_02fe/0311 与 IL_033a/034d），本补丁只改布尔结果、幂等，`GameItem.Target` 仍只调用一次 ⇒ 不会重复升级或多耗材料。
+- `ItemBehaviourManager.Target` 只遍历目标身上的 `ItemTargetBehaviour` 组件，本模组箱子没有该组件 ⇒ 无额外副作用。
+
+### 14.2 料斗保护复核
+
+- `FactsBuilder.BuildNode` 对每个节点判定料斗（tag `HOPPER_INTAKE_TAG`/`HOPPER_OUTLET_TAG` 或 identifier `hopper_in`/`hopper_out`）；`Protection.Evaluate` 递归整棵后代树，任一层命中即整根保留并报告命中的那个料斗。
+- 新增测试：两层容器深处的料斗仍整根保留；普通容器（有子物品/空容器）不被误拦。
+
+### 14.3 颜色与本地化复核
+
+- 保留用户最新要求：`log_sold`/`log_sales_total` 使用 `#000000`；结算失败只写模组日志，不写 `nightLogs`。
+- 本地化键覆盖：重新用脚本比对代码中的字面键与 `zh.csv`/`en.csv` 键集，删除 5 个因“失败不再进报告”而失效的键（`log_commit_item`、`log_commit_partial`、`log_commit_rolled_back`、`log_commit_not_settled`、`log_commit_rollback_incomplete`），zh/en 各 **82** 键、键集完全一致。
+- 动态构造的键逐一核对存在：`log_commit_<phase>_failed` 的 11 个阶段（plan/revalidate/detach/verify/pay/destroy/crime/mislabel/settle/ledger/rollback）与 `log_commit_invalid_plan`、`crime_<type>` 的 5 个类型、`reason_*`、`tooltip_upgrade_*` 全部存在。
+- `WriteFailureReport` 仍用 `Loc.Get(FailureReasonKey)` 生成日志文本，键存在，只是输出到日志而不是报告。
+
+### 14.4 HANDOFF 修正
+
+- `MethodsScanned` 230 → **234**；测试数 407 → **411**；配置数“9 项” → **8 项（2 个数值倍率 + 6 个开关）**（违禁倍率已在第 2 轮删除）。
+- `src/Game` 模块清单补 `BinOpenHook` / `BinTooltip` / `UpgradeDragPatch`。
+
+### 14.5 真实验证
+
+```text
+> pwsh -File .\build.ps1
+Built ...\build\ShippingBin.dll
+> pwsh -File .\tools\test-rules.ps1
+[ok] Rules / Protection / Planner / Commit / Ledger / CommitLedger / GrantPolicy / ShapeMigration / UpgradeStatus
+411 checks passed, 0 failed.
+> pwsh -File .\package.ps1
+Included mod textures: ...\packaging\Textures
+Development package only: ...\build\package-dev
+> pwsh -File .\tools\scan.ps1
+Refused        : False
+MethodsScanned : 234
+Capabilities   : {}
+Findings       : {}
+HardFlags      : {}
+Pending        : {}
+```
+
+### 14.6 包哈希（`build/package-dev`，本轮重建）
+
+DLL 因 csc 非确定性每次重建会变；manifest 与 csv 稳定。
+
+| 文件 | 大小 | SHA256 |
+| --- | --- | --- |
+| Localization\en.csv | 6371 | `882793367D4A343A7FA4401047CDF4CC164C028C87533221A7945F2CF75BB8E3` |
+| Localization\zh.csv | 5914 | `396FD08A5812C07938DC9C94FD9D6FD799B8FCF795EC6499D0C71B3B607A1570` |
+| manifest.xml | 498 | `08656A2A07004D0635F997EC447EB8E9DC7AD618992F35F5F5F3FE7005D077EB` |
+| ShippingBin.dll | 69632 | `4032715FF2522288267DE9064E6C4212A85E1043C4378D9EF582132BA8DC3C7B` |
+| Textures\Items\shipping_bin_v2.png | 9608 | `9749E6C3F3434395D960F51A6B718697F6C39E844BD04FF809ADE7E5FBDB03C5` |
+| Textures\Items\shipping_bin.png | 2749 | `B3FF2B16C582429F1C256C649015AE0986F3226348D748538745BAB543AC6B33` |

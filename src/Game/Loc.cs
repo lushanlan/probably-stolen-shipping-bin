@@ -38,5 +38,19 @@ namespace ShippingBin
             object[] args = new object[] { arg0, arg1, arg2 };
             return ModHelper.GetLocalized(modId, key, args);
         }
+
+        internal static string Get(string key, object arg0, object arg1, object arg2,
+                                   object arg3)
+        {
+            object[] args = new object[] { arg0, arg1, arg2, arg3 };
+            return ModHelper.GetLocalized(modId, key, args);
+        }
+
+        internal static string Get(string key, object arg0, object arg1, object arg2,
+                                   object arg3, object arg4, object arg5)
+        {
+            object[] args = new object[] { arg0, arg1, arg2, arg3, arg4, arg5 };
+            return ModHelper.GetLocalized(modId, key, args);
+        }
     }
 }

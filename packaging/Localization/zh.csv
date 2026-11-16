@@ -13,7 +13,8 @@ upgrade_max,这个出货箱已经升到满级了。
 upgrade_ok,出货箱容量提升到 {0}x{1}。
 upgrade_overflow,出货箱已满级，多出的 {0} 点升级进度无法继续使用（上限 {1}）。
 upgrade_pending_space,箱子里的物品布局暂时放不下新的容量，已经记下待扩容，不会再消耗材料；开箱或睡觉时会自动重试。
-log_sold,出货箱：卖出 {0} 件，收入 {1}。
+log_sold,出货箱：卖出 {0} 件。
+log_sales_total,出货箱销售额：{0}。
 log_retained,出货箱：保留 {0} 件未出售。
 log_retained_reason,未出售：{0} —— {1}
 log_crime,出货箱：涉案金额 {0}
@@ -21,12 +22,7 @@ log_mislabel,出货箱：假贴标扣除黑市声望 {0}（涉案基数 {1}）
 log_list_separator,、
 log_overflow_retry,出货箱：金额超出安全范围，本次不结算，货物已保留。
 log_commit_failed,出货箱：结算未能完成，货物已尽量放回。
-log_commit_item,出货箱：出问题的物品是 {0}
-log_commit_partial,出货箱：已按 {0} 件、收入 {1} 记账，其余已放回箱内
-log_commit_rolled_back,出货箱：已回滚 {0} 件，钱和货物都没有变化
 log_commit_rollback_failed,出货箱：回滚没有完全成功，请手动检查箱内货物
-log_commit_rollback_incomplete,出货箱：有 {0} 件未能确认放回（{1}）
-log_commit_not_settled,出货箱：本次没有写入结算标记，同一晚再次睡觉会重试
 log_commit_ledger_failed,出货箱：涉案或假标签记账未全部落地，将在下次进游戏时补提交
 log_ledger_pending_retry,出货箱：第 {0} 晚仍有未落地的记账，先补提交再结算（本次不出售）
 log_ledger_recovered,出货箱：已补提交第 {0} 晚遗留的记账（{1} 件，{2} 金）
@@ -53,6 +49,7 @@ reason_contraband_off,设置里关闭了违禁品出售
 reason_not_owned,不是你的物品
 reason_no_value,估值不足
 reason_overflow,金额超出安全范围
+reason_automation_hopper,自动化传送料斗（进料斗/出料斗）不会被出售
 reason_unknown,未知原因
 crime_fencing,销赃
 crime_drug_trafficking,毒品
@@ -77,3 +74,9 @@ cfg_debug_grant,调试模式：新局赠送出货箱
 cfg_debug_grant_tip,默认关闭。每个新开局只赠送一次，普通读档不会重复；空间不足会保留并重试。
 upgrade_pending_recovered,出货箱已自动整理并应用待扩容的 {0}x{1}。
 upgrade_pending_load,旧存档的出货箱暂时保留较大空间，开箱或睡觉时会自动整理并应用当前档位容量。
+tooltip_upgrade_progress,升级进度：累计 {0} 点；下一档 {1} 点，当前容量 {2}x{3}。
+tooltip_upgrade_max,升级进度：已满级（累计 {0}/{1} 点），当前容量 {2}x{3}。
+tooltip_upgrade_pending,升级进度：累计 {0} 点（上限 {1} 点）；待扩容至 {2}x{3}，当前实际容量 {4}x{5}。
+tooltip_upgrade_progress_unknown,升级进度：累计 {0} 点；下一档 {1} 点；当前容量暂不可读取。
+tooltip_upgrade_max_unknown,升级进度：已满级（累计 {0}/{1} 点）；当前容量暂不可读取。
+tooltip_upgrade_pending_unknown,升级进度：累计 {0} 点（上限 {1} 点）；待扩容至 {2}x{3}；当前容量暂不可读取。

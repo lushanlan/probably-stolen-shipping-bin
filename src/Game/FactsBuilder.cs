@@ -77,6 +77,7 @@ namespace ShippingBin
             f.Owned = GeneralHelper.IsItemEffectivelyOwned(item);
             f.BehindLock = item.IsTag(ModIds.TagBehindLock) || item.IsTag(ModIds.TagLocked) || SafeCurrentlyLocked(item);
             f.IsShippingBin = BinItem.IsBin(item);
+            f.IsAutomationHopper = IsAutomationHopper(item);
             f.IsQuestItem = IsQuestRelated(item);
             f.IsContainer = item.IsTag(ModIds.TagContainer) || item.IsGameItemType("CONTAINER");
             f.IsProtectedItem = IsProtected(item);
@@ -175,6 +176,38 @@ namespace ShippingBin
                 return true;
             }
             return SafeHazardousWaste(item);
+        }
+
+        // 自动化料斗保护（用户 m02433）：进料斗/出料斗是原版自动化传送链的两端，
+        // 卖掉任意一端都会破坏玩家已有的自动化。IL 证据（docs/il/quest-protection.md §8）：
+        // HopperHelper.CreateIntake() 的 identifier = "hopper_in"，打 HOPPER_INTAKE_TAG；
+        // HopperHelper.CreateOutlet() 的 identifier = "hopper_out"，打 HOPPER_OUTLET_TAG；
+        // HopperHelper.IsIntake/IsOutlet 仅按这两个 tag 判断。
+        // 判定同时接受 tag 与 identifier，避免 tag 被其它模组剥离时漏保护。
+        private static bool IsAutomationHopper(GameItem item)
+        {
+            if (item == null)
+            {
+                return false;
+            }
+            if (item.IsTag(ModIds.TagHopperIntake) || item.IsTag(ModIds.TagHopperOutlet))
+            {
+                return true;
+            }
+            string id = item.identifier;
+            if (string.IsNullOrEmpty(id))
+            {
+                return false;
+            }
+            string[] ids = ModIds.AutomationHopperIds;
+            for (int i = 0; i < ids.Length; i++)
+            {
+                if (string.Equals(ids[i], id, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         /// <summary>剧情物或"当前激活委托单可交付物"。</summary>

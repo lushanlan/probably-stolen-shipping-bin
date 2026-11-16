@@ -434,6 +434,28 @@ namespace ShippingBin
             return GetIntTag(bin, ModIds.TagPendingShape) > 0;
         }
 
+        /// <summary>读取待扩容目标；没有任何有效标记时返回 false。</summary>
+        internal static bool GetPendingSize(GameItem bin, out int width, out int height)
+        {
+            width = 0;
+            height = 0;
+            int encoded = GetIntTag(bin, ModIds.TagPendingShape);
+            if (encoded <= 0)
+            {
+                return false;
+            }
+            return ShapeMigration.TryDecodeShape(encoded, out width, out height);
+        }
+
+        /// <summary>读取当前实际已应用的容器容量（来自网格像素尺寸，不是 pending 目标）。</summary>
+        internal static bool TryGetBinShapeSize(GameItem bin, out int width, out int height)
+        {
+            width = 0;
+            height = 0;
+            GameGridInventory grid = GridOf(bin);
+            return TryGetShapeSize(grid, out width, out height);
+        }
+
         internal static void SetPendingSize(GameItem bin, int width, int height)
         {
             int encoded = ShapeMigration.EncodeShape(width, height);

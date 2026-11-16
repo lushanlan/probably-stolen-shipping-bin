@@ -13,6 +13,7 @@ $sources = @(
     (Join-Path $PSScriptRoot 'src\Core\GrantPolicy.cs'),
     (Join-Path $PSScriptRoot 'src\Core\Ledger.cs'),
     (Join-Path $PSScriptRoot 'src\Core\ShapeMigration.cs'),
+    (Join-Path $PSScriptRoot 'src\Core\UpgradeStatus.cs'),
     (Join-Path $PSScriptRoot 'src\Game\ModIds.cs'),
     (Join-Path $PSScriptRoot 'src\Game\Loc.cs'),
     (Join-Path $PSScriptRoot 'src\Game\ModSettings.cs'),
@@ -24,6 +25,8 @@ $sources = @(
     (Join-Path $PSScriptRoot 'src\Game\Purchase.cs'),
     (Join-Path $PSScriptRoot 'src\Game\DebugGrant.cs'),
     (Join-Path $PSScriptRoot 'src\Game\BinOpenHook.cs'),
+    (Join-Path $PSScriptRoot 'src\Game\UpgradeDragPatch.cs'),
+    (Join-Path $PSScriptRoot 'src\Game\BinTooltip.cs'),
     (Join-Path $PSScriptRoot 'src\ShippingBinMod.cs')
 )
 

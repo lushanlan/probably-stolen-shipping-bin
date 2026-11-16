@@ -22,6 +22,7 @@ public static class CoreTests
         Run("CommitLedger", TestCommitLedger);
         Run("GrantPolicy", TestGrantPolicy);
         Run("ShapeMigration", TestShapeMigration);
+        Run("UpgradeStatus", TestUpgradeStatus);
         Console.WriteLine();
         Console.WriteLine(passed + " checks passed, " + failed + " failed.");
         if (failed > 0)
@@ -286,6 +287,41 @@ public static class CoreTests
         nestedBin.Children.Add(Item("nested_bin_child", 5));
         nestedBinRoot.Children.Add(nestedBin);
         Eq((long)RejectCode.ShippingBin, (long)Protection.Evaluate(nestedBinRoot, settings).Code, "nested shipping bin protects root");
+
+        ItemFacts hopper = Item("hopper_out", 400);
+        hopper.IsAutomationHopper = true;
+        Eq((long)RejectCode.AutomationHopper, (long)Protection.Evaluate(hopper, settings).Code, "automation hopper never sold");
+        Eq("reason_automation_hopper", new RejectReason(RejectCode.AutomationHopper, hopper).ReasonKey, "reason key hopper");
+
+        ItemFacts intake = Item("hopper_in", 400);
+        intake.IsAutomationHopper = true;
+        Eq((long)RejectCode.AutomationHopper, (long)Protection.Evaluate(intake, settings).Code, "intake hopper never sold");
+
+        ItemFacts crateWithHopper = Item("crate_with_hopper", 100);
+        crateWithHopper.Children.Add(intake);
+        Eq((long)RejectCode.AutomationHopper, (long)Protection.Evaluate(crateWithHopper, settings).Code, "descendant hopper keeps whole root");
+        Eq("hopper_in", Protection.Evaluate(crateWithHopper, settings).ItemIdentifier, "descendant hopper reports the hopper itself");
+
+        // 料斗藏在两层容器里也要整根保留（递归，而不是只看根）。
+        ItemFacts innerCrate = Item("inner_crate", 60);
+        ItemFacts deepHopper = Item("hopper_out", 400);
+        deepHopper.IsAutomationHopper = true;
+        innerCrate.Children.Add(deepHopper);
+        ItemFacts outerCrate = Item("outer_crate", 120);
+        outerCrate.IsContainer = true;
+        outerCrate.Children.Add(innerCrate);
+        Eq((long)RejectCode.AutomationHopper, (long)Protection.Evaluate(outerCrate, settings).Code, "nested descendant hopper keeps whole root");
+
+        // 普通容器（含子物品、无料斗）不能被误拦。
+        ItemFacts normalChild = Item("normal_child", 30);
+        ItemFacts normalCrate = Item("normal_crate", 90);
+        normalCrate.IsContainer = true;
+        normalCrate.Children.Add(normalChild);
+        Check(Protection.Evaluate(normalCrate, settings) == null, "ordinary container with ordinary contents is sellable");
+
+        ItemFacts emptyCrate = Item("empty_crate", 50);
+        emptyCrate.IsContainer = true;
+        Check(Protection.Evaluate(emptyCrate, settings) == null, "empty ordinary container is sellable");
 
         ItemFacts machine = Item("machine", 100);
         machine.IsProtectedItem = true;
@@ -1059,5 +1095,106 @@ public static class CoreTests
                 "load: verified fit applies target");
             Check(ShapeMigration.DecideOnLoad(12, 12, 17, 10, false) == LoadShapeAction.KeepAndMarkPending,
                 "load: unverified non-superset keeps pending");
+        }
+
+        // 升级进度 tooltip 的“状态判定”纯逻辑。文案本身由本地化提供，这里只测：
+        // 该选哪种形态、下一档阈值、pending 与“实际容量”的区分。
+        private static void TestUpgradeStatus()
+        {
+            Check(Rules.NextThresholdFor(0) == 25, "next threshold at 0 points is 25");
+            Check(Rules.NextThresholdFor(24) == 25, "next threshold at 24 points is 25");
+            Check(Rules.NextThresholdFor(25) == 100, "next threshold at 25 points is 100");
+            Check(Rules.NextThresholdFor(99) == 100, "next threshold at 99 points is 100");
+            Check(Rules.NextThresholdFor(100) == 300, "next threshold at 100 points is 300");
+            Check(Rules.NextThresholdFor(299) == 300, "next threshold at 299 points is 300");
+            Check(Rules.NextThresholdFor(300) == 0, "max level has no next threshold");
+            Check(Rules.NextThresholdFor(999) == 0, "beyond max has no next threshold");
+            Check(Rules.NextThresholdFor(-5) == 25, "negative points clamp to first threshold");
+
+            UpgradeStatus fresh = UpgradeStatusLogic.Compute(0, 10, 10, 0, 0);
+            Check(fresh.Kind == UpgradeStatusKind.Progress, "0 points is progress");
+            Check(fresh.NextThreshold == 25, "0 points next 25");
+            Check(fresh.ActualWidth == 10 && fresh.ActualHeight == 10, "0 points capacity 10x10");
+            Check(!fresh.HasPending, "0 points no pending");
+
+            UpgradeStatus almost = UpgradeStatusLogic.Compute(24, 10, 10, 0, 0);
+            Check(almost.Kind == UpgradeStatusKind.Progress && almost.NextThreshold == 25,
+                "24 points still progress toward 25");
+
+            UpgradeStatus tier2 = UpgradeStatusLogic.Compute(25, 17, 10, 0, 0);
+            Check(tier2.Kind == UpgradeStatusKind.Progress && tier2.NextThreshold == 100,
+                "25 points progress toward 100");
+
+            UpgradeStatus tier3 = UpgradeStatusLogic.Compute(100, 17, 20, 0, 0);
+            Check(tier3.Kind == UpgradeStatusKind.Progress && tier3.NextThreshold == 300,
+                "100 points progress toward 300");
+
+            UpgradeStatus nearMax = UpgradeStatusLogic.Compute(299, 17, 20, 0, 0);
+            Check(nearMax.Kind == UpgradeStatusKind.Progress && nearMax.NextThreshold == 300,
+                "299 points progress toward 300");
+
+            UpgradeStatus maxed = UpgradeStatusLogic.Compute(300, 32, 30, 0, 0);
+            Check(maxed.Kind == UpgradeStatusKind.MaxLevel, "300 points is max level");
+            Check(maxed.NextThreshold == 0, "max level has no next threshold");
+            Check(maxed.ActualWidth == 32 && maxed.ActualHeight == 30, "max level capacity 32x30");
+
+            UpgradeStatus beyond = UpgradeStatusLogic.Compute(301, 32, 30, 0, 0);
+            Check(beyond.Kind == UpgradeStatusKind.MaxLevel, "over-cap points still report max level");
+
+            UpgradeStatus negative = UpgradeStatusLogic.Compute(-3, 10, 10, 0, 0);
+            Check(negative.Points == 0 && negative.Kind == UpgradeStatusKind.Progress,
+                "negative points clamp to zero");
+
+            // pending 必须优先，并且同时保留“目标”与“实际容量”，不能把目标当已应用。
+            UpgradeStatus pending = UpgradeStatusLogic.Compute(299, 17, 20, 32, 30);
+            Check(pending.Kind == UpgradeStatusKind.Pending, "pending wins over progress");
+            Check(pending.HasPending, "pending flag set");
+            Check(pending.PendingWidth == 32 && pending.PendingHeight == 30, "pending target 32x30");
+            Check(pending.ActualWidth == 17 && pending.ActualHeight == 20, "pending keeps actual 17x20");
+            Check(pending.Points == 299, "pending keeps points");
+
+            UpgradeStatus pendingMax = UpgradeStatusLogic.Compute(300, 17, 20, 32, 30);
+            Check(pendingMax.Kind == UpgradeStatusKind.Pending, "pending wins over max level");
+            Check(pendingMax.NextThreshold == 0, "pending at max has no next threshold");
+
+            UpgradeStatus halfPending = UpgradeStatusLogic.Compute(100, 17, 20, 32, 0);
+            Check(halfPending.Kind == UpgradeStatusKind.Progress && !halfPending.HasPending,
+                "half-invalid pending is ignored");
+
+            UpgradeStatus unknownActual = UpgradeStatusLogic.Compute(25, 0, 0, 0, 0);
+            Check(unknownActual.Kind == UpgradeStatusKind.Progress
+                && !unknownActual.ActualKnown
+                && unknownActual.ActualWidth == 0 && unknownActual.ActualHeight == 0,
+                "unknown actual size is marked unreadable, not guessed");
+            Check(UpgradeStatusLogic.TooltipKey(unknownActual) == "tooltip_upgrade_progress_unknown",
+                "unknown actual uses progress_unknown key");
+
+            // 读取失败时不得把推算尺寸当成实际容量：pending 也要保留目标并显示“暂不可读取”。
+            UpgradeStatus pendingUnknown = UpgradeStatusLogic.Compute(299, 0, 0, 32, 30);
+            Check(pendingUnknown.Kind == UpgradeStatusKind.Pending
+                && !pendingUnknown.ActualKnown
+                && pendingUnknown.PendingWidth == 32 && pendingUnknown.PendingHeight == 30,
+                "pending with unreadable actual keeps target and marks unknown");
+            Check(UpgradeStatusLogic.TooltipKey(pendingUnknown) == "tooltip_upgrade_pending_unknown",
+                "pending unknown uses pending_unknown key");
+
+            UpgradeStatus maxUnknown = UpgradeStatusLogic.Compute(300, 0, 0, 0, 0);
+            Check(maxUnknown.Kind == UpgradeStatusKind.MaxLevel && !maxUnknown.ActualKnown,
+                "max level with unreadable actual marks unknown");
+            Check(UpgradeStatusLogic.TooltipKey(maxUnknown) == "tooltip_upgrade_max_unknown",
+                "max unknown uses max_unknown key");
+
+            // 半非法实际尺寸（只给宽或只给高）同样视为不可读取。
+            UpgradeStatus halfActual = UpgradeStatusLogic.Compute(25, 17, 0, 0, 0);
+            Check(!halfActual.ActualKnown && halfActual.ActualWidth == 0,
+                "half-known actual size is unreadable");
+
+            // 已知尺寸时仍用原键，保证既有文案不被破坏。
+            Check(UpgradeStatusLogic.TooltipKey(UpgradeStatusLogic.Compute(25, 17, 10, 0, 0))
+                == "tooltip_upgrade_progress", "known actual uses progress key");
+            Check(UpgradeStatusLogic.TooltipKey(UpgradeStatusLogic.Compute(300, 32, 30, 0, 0))
+                == "tooltip_upgrade_max", "known actual uses max key");
+            Check(UpgradeStatusLogic.TooltipKey(UpgradeStatusLogic.Compute(299, 17, 20, 32, 30))
+                == "tooltip_upgrade_pending", "known actual uses pending key");
         }
 }

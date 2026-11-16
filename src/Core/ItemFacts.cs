@@ -32,6 +32,7 @@ namespace ShippingBin.Core
     {
         None = 0,
         NullItem,
+        AutomationHopper,
         ShippingBin,
         BehindLock,
         QuestItem,
@@ -79,6 +80,8 @@ namespace ShippingBin.Core
 
         public bool Owned = true;
         public bool BehindLock;
+        /// <summary>原版自动化料斗（进料斗 hopper_in / 出料斗 hopper_out），不得出售。</summary>
+        public bool IsAutomationHopper;
         public bool IsShippingBin;
         public bool IsQuestItem;
         public bool IsProtectedItem;
@@ -129,6 +132,7 @@ namespace ShippingBin.Core
             switch (code)
             {
                 case RejectCode.NullItem: return "reason_null_item";
+                case RejectCode.AutomationHopper: return "reason_automation_hopper";
                 case RejectCode.ShippingBin: return "reason_shipping_bin";
                 case RejectCode.BehindLock: return "reason_locked";
                 case RejectCode.QuestItem: return "reason_quest";
@@ -178,13 +182,14 @@ namespace ShippingBin.Core
 
         /// <summary>
         /// 单节点判定顺序（越靠前优先级越高）：
-        /// 空 -> 出货箱自身 -> 锁 -> 剧情物 -> 机器/文档/普通重要物
+        /// 空 -> 自动化料斗 -> 出货箱自身 -> 锁 -> 剧情物 -> 机器/文档/普通重要物
         /// -> 赃物开关 -> 违禁品开关 -> 非玩家物品。
         /// 容器本身不再被当作禁止项：容器是合法的待售单位，由后代判定决定整树去留。
         /// </summary>
         public static RejectCode SingleNodeCode(ItemFacts item, Settings settings)
         {
             if (item == null) return RejectCode.NullItem;
+            if (item.IsAutomationHopper) return RejectCode.AutomationHopper;
             if (item.IsShippingBin) return RejectCode.ShippingBin;
             if (item.BehindLock) return RejectCode.BehindLock;
             if (item.IsQuestItem) return RejectCode.QuestItem;

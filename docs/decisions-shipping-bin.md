@@ -359,3 +359,107 @@
 - 旧 2×2 箱子不自动变 4×4；需要时由玩家取出重放或另行迁移。
 - 打开箱子的重试依赖 `ItemMouseDoubleClickHandler.OpenContentAction`；绕过它的路径会推迟到睡觉。
 - 32×30 窗口在低分辨率的可读性、迁移后物品摆放位置的具体观感需实机确认。
+
+# 第七轮：物品说明动态显示升级进度（2026-11-16）
+
+## 1. 为什么用 `OnCreateTooltipLate`
+
+- IL 已证实：`GameItemElement.GetTooltipBasic()` 在追加 `shortDescription` / `flavorText` **之前**调用 `ModInternal.CreateTooltipLate` → `ModHook.FireOnCreateTooltipLate`（IL_062d，说明文本在 IL_0646 之后）。这是官方给出的、面向“物品说明追加行”的钩子。
+- `GetTooltipBasic` 每次悬停都会重新执行，因此不需要缓存：材料升级后点数/容量改变，下一次悬停自然显示新值。
+- 备选方案“改写 `item.shortDescription`”被否决：说明字符串是静态字段，改了不会随点数变化，还要处理本地化与还原。
+- 备选方案“显示自定义 examineWindow”被否决：IL 显示 `GameItem.SetExamineWindow` 全库无调用者，`OpenExamineAction` 只会显示已存在的窗口，物品说明的实际载体就是 tooltip。
+
+## 2. 数据来源与“不误报”原则
+
+- 点数：该箱自己的 `lushanlan.shipping_bin.upgrade_points` tag（每箱独立、随物品存档）。
+- 实际容量：`grid.widthPixels / UISettings.gridSize`（原生网格像素反推），**不是**按点数推算的档位尺寸。
+- 待扩容：`lushanlan.shipping_bin.pending_shape`（`w*1000+h` 编码）。
+- 状态判定放在纯逻辑层 `UpgradeStatusLogic.Compute`：pending 只在宽高都有效时成立，并且**优先于满级与进度**；满级时下一档阈值为 0；实际尺寸非法/缺失时记 `ActualKnown=false`（显示“暂不可读取”），**不做推算**。
+- 这样即使玩家看到“点数 299、待扩容 32×30”，也能同时看到“当前实际容量 17×20”，不会把目标当成已应用。
+
+## 3. 不改动的东西
+
+- 不改计价、售价、涉案、假标签、容量档位、升级规则与购买逻辑；`NextThresholdFor` 只用于文案。
+- 不新增窗口、不新增配置项、不改存档结构；仅新增 3 个本地化键与 1 个纯逻辑文件。
+
+## 4. 验证
+
+- `tools\test-rules.ps1`：403 checks（新增 `UpgradeStatus` 组 40 条：阈值边界、三种状态、pending 优先、半非法 pending、负点数、未知/半未知实际尺寸与 `*_unknown` 键选择）。
+- `build.ps1` / `package.ps1` / `tools\scan.ps1`：`Refused=False`、`MethodsScanned=228`、Findings 全空。
+- 本地化：`zh` 与 `en` 各 82 键、键集一致。
+
+## 5. 边界
+
+- 进度行位于原说明之前（钩子顺序所致），原说明完整保留。
+- 若网格读取异常，tooltip 显示“当前容量暂不可读取”，不显示任何推算尺寸；“待扩容目标”仍单独列出。该分支由 `UpgradeStatusLogic.Compute`（`ActualKnown`）与 `TooltipKey`（`*_unknown` 键）决定，已有单测覆盖。
+- 游戏内排版、换行与多 mod 追加行的顺序需实机确认。
+
+# 第八轮：自动化料斗保护 + 次日报告销售额（2026-11-16，用户 m02433）
+
+## 1. 料斗是原版自动化链的两端
+
+- `HopperHelper.CreateIntake()` → identifier `hopper_in`，`HOPPER_INTAKE_TAG`，中文名“进料斗”，描述说明它每晚把所在库存送进出料斗所在库存。
+- `HopperHelper.CreateOutlet()` → identifier `hopper_out`，`HOPPER_OUTLET_TAG`，中文名“出料斗”。
+- `HopperHelper.IsIntake/IsOutlet` 也只按这两个 tag 判断。两者卖掉任意一端都会破坏玩家已有产线，因此列入不可出售保护。
+
+## 2. 判定放在规则层，优先于容器/所有权
+
+- `ItemFacts.IsAutomationHopper` + `RejectCode.AutomationHopper`；`Protection.SingleNodeCode` 顺序：空 → 自动化料斗 → 出货箱自身 → 锁 → 剧情物 → 机器/文档/普通重要物 → 赃物/违禁开关 → 非玩家物品。
+- 后代命中整根保留（复用既有规则），保留原因用 `reason_automation_hopper`。
+- 适配层 `FactsBuilder.IsAutomationHopper` 同时看 tag 与 identifier：tag 被其它 mod 剥离时 identifier 仍能兜住。
+
+## 3. 报告销售额：拆成两行
+
+- 原 `log_sold` 只报件数（`出货箱：卖出 {0} 件。`），新增 `log_sales_total`（`出货箱销售额：{0}。`）紧随其后。
+- 依据：`PlayerStore.BeginDay()` 不清 `nightLogs`，`StartOfDayUIManager.InitPanel()` 遍历全部日志后 `Clear()`——所以这两行会在次日早间报告出现且只出现一次。
+
+## 4. 验证
+
+- `tools\test-rules.ps1`：407 checks（新增 4 条：根料斗、进料斗、后代料斗整根保留、reason key）。
+- `build.ps1` / `package.ps1` / `tools\scan.ps1`：`Refused=False`、`MethodsScanned=230`、Findings 全空。
+- 本地化：zh 与 en 各 87 键、键集一致。
+
+## 5. 边界
+
+- 只识别原版两种料斗；其它模组的“传送”物品无这两个 tag/identifier 时不保护。
+- 报告销售额只含本模组出货箱成交额，不含店内正常销售。
+- 料斗自身的自动化行为未被改动，需实机确认保护不影响连接与传送。
+
+# 第九轮：材料拖拽升级修复、报告颜色与失败日志（2026-11-16，用户 m02627）
+
+## 1. 为什么"金属拖不上去"
+
+- 原版 `ItemMouseDragHandler.EndDrag` 的交互门是 `currentItem.MayTarget(lastItem) && currentItem.CanTarget(lastItem)`，通过后才 `ItemBehaviourManager.Target` 与 `GameItem.Target`。
+- 金属锭在 `MaterialDirectory.MetalIngot()` 中给自己设置了 `mayThisTargetItemFunc/canThisTargetItemFunc = MaterialDirectory.CanIngotTarget`，而它是写死白名单（vending_machine_core / 笼子 / 水箱 / RAS），对出货箱返回显式 `false`。
+- 我们在箱子一侧设置的 `mayItemTargetThisFunc/canItemTargetThisFunc` 会被这个显式 `false` 在合成结果里否决，`GameItem.Target` 不执行，箱子的 `onItemTargetThisFunc` 永不触发。
+- 结论：问题在原版交互门，不在容器谓词、点数或材料识别。
+
+## 2. 修复方式与取舍
+
+- 新增 `src/Game/UpgradeDragPatch.cs`，对 `GameItem.MayTarget` / `GameItem.CanTarget` 加 postfix：仅当结果为 `false` 且 `BinItem.CanUpgrade(source,target)` 为真时补成 `true`。
+- 选择"补门"而不是"另写一套交互"的原因：保留原版拖拽手势、声音、`GameItem.Target` 调用顺序与后续所有回调，玩家操作习惯不变；也不会越权修改金属锭自身的白名单（否则会影响售货机等原版目标）。
+- 首轮触发写一条模组日志，避免静默；异常单独记录，不阻断原版流程。
+
+## 3. 报告与日志
+
+- 销售额与售出件数改用 `#000000`：原 `#9fe08f` 在早间报告面板上不醒目。
+- 结算失败不再写入 `nightLogs`，只写 `ModLog`：失败信息含阶段、原因、物品、件数、金额、付款/回滚/落 day 状态，便于用户把日志发回来排查；代价是玩家不打开日志就不会知道失败（按用户要求取舍）。
+
+## 4. 验证
+
+- 407 checks 全过（未回归）；`MethodsScanned` 由 230 增至 234（新增补丁的 4 个方法）；Findings/HardFlags/Pending 全空。
+- 包哈希见 `docs/acceptance.md` §13.5。
+
+## 5. 边界
+
+- 补丁只覆盖三种升级材料 × 本模组出货箱的组合。
+- 报告颜色只影响本模组写入的两行。
+- 原版白名单行为未改动，其它目标（售货机、笼子、水箱、RAS）不受影响。
+
+# 复核修正（第 10 轮，2026-11-16，Codex 集成复核）
+
+- `UpgradeDragPatch` 改用 Harmony `__0` 取参（本机参数名为 `targetItem`，`__0` 更稳）；放行前显式校验“三种材料 + 本模组箱 + 所有权 + 未满级或 pending”。
+- 审计 `GameItem.Target` 的材料端副作用：金属锭的 `onThisTargetItemFunc` 只处理四个原版白名单目标，对本模组箱子直接返回；材料只在箱子的 `onItemTargetThisFunc -> DoUpgrade` 里消耗一次。EndDrag 的两次门判定只改布尔值，不会导致重复升级。
+- 料斗保护补测：两层容器深处的料斗仍整根保留；普通容器不会被误拦。
+- 保留黑字与“失败只写日志”；清理 5 个失效的 `log_commit_*` 玩家文案键，zh/en 各 82 键且键集一致；动态键（11 个失败阶段、5 个犯罪类型、reason/tooltip）逐一核对存在。
+- `docs/HANDOFF.md` 数字修正：MethodsScanned 234、411 checks、8 项配置（2 数值 + 6 开关）、Game 模块清单补全。

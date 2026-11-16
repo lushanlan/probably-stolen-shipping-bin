@@ -17,15 +17,16 @@
 
 1. **获得**：买下店铺后，在王尔德恩惠（Wild Network）里购买；每天限购一次，无免费首箱。
 2. **使用**：把物品拖进出货箱（赃物、违禁品也能放，是否出售由夜间的规则决定）。睡前可以随时取回。
-3. **结算**：睡觉时（`OnGoingSleepEarly`）一次性结算所有箱子。关门、离开店铺都不会出售。
-4. **升级**：把 `junk` / `scrap_metal` / `metal_ingot` 拖到出货箱上（与原版瓶子打印机同一种交互）。只扩容量，不提高售价，不把材料价值加进箱子价值。
-5. **容量**：四档，名称与尺寸对照原版“储藏区”系列（IL 核实）：初始 10×10（原版储藏区）→ 25 点 17×10（原版储藏区（扩建））→ 100 点 17×20（两倍扩建，推导值）→ 300 点 32×30（超科技储藏区等容 **960** 格，单页实现）。满级 960 格。旧存档里更大的容器不会被缩容；若目标形状“变宽变矮”（如旧档 12×12 → 17×10），升级时会安全迁移（取出→重塑→放回，失败完整回滚）。迁移失败会记下“待扩容”（不再消耗材料），开箱或睡觉时自动重试并提示。箱子本体占 **4×4** 格（64×64 贴图）；旧存档里的 2×2 箱子保持原占格以免与背包邻居重叠。
+3. **结算**：睡觉时（`OnGoingSleepEarly`）一次性结算所有箱子。关门、离开店铺都不会出售。次日早间报告会出现“出货箱：卖出 N 件。”和单独的“出货箱销售额：M。”两行，均为黑色字（`PlayerStore.nightLogs`，报告读取后清空，只显示一次；自动化料斗被保留时也会在报告里说明原因）。若结算失败，失败详情只写模组日志，**不**写入早间报告。
+4. **升级**：把 `junk` / `scrap_metal` / `metal_ingot` 拖到出货箱上（与原版瓶子打印机同一种交互；原版金属锭只对售货机/笼子/水箱/RAS 生效，本模组用一个小补丁只为自己这箱子放行，详见 [docs/HANDOFF.md](docs/HANDOFF.md)）。只扩容量，不提高售价，不把材料价值加进箱子价值。
+5. **升级进度**：鼠标悬停出货箱时，原生物品说明里会动态追加一行“升级进度”——累计点数、下一档阈值（25/100/300）与**当前实际容量**；满级显示“已满级（N/300）”；若箱子有待扩容，则同时显示“待扩容至 W×H，当前实际容量 W×H”，不会把目标尺寸说成已生效。数据来自每箱自己的 tag 与真实网格尺寸，材料升级后下一次悬停即刷新；若网格读取失败则显示“当前容量暂不可读取”，不会用推算尺寸冒充实际容量（IL 证实 `GetTooltipBasic` 每次悬停重建，钩子为官方 `OnCreateTooltipLate`）。
+6. **容量**：四档，名称与尺寸对照原版“储藏区”系列（IL 核实）：初始 10×10（原版储藏区）→ 25 点 17×10（原版储藏区（扩建））→ 100 点 17×20（两倍扩建，推导值）→ 300 点 32×30（超科技储藏区等容 **960** 格，单页实现）。满级 960 格。旧存档里更大的容器不会被缩容；若目标形状“变宽变矮”（如旧档 12×12 → 17×10），升级时会安全迁移（取出→重塑→放回，失败完整回滚）。迁移失败会记下“待扩容”（不再消耗材料），开箱或睡觉时自动重试并提示。箱子本体占 **4×4** 格（64×64 贴图）；旧存档里的 2×2 箱子保持原占格以免与背包邻居重叠。
 
 ## 出售规则（摘要）
 
 - 售价 = 物品**当前状态显示估值** × 0.8（可配置；估值直接复用原版整树估值，含容器后代、锁后物品排除、`IGNORE_CHILD_VALUE`、商店事件、液体容器价）。
 - 容器按"一件物品"整体出售；只要**任一后代**不可出售，整个待售根保留并给出中文原因。
-- 保护（只用原生可证实的信号）：剧情关键物（运行时读取原版 `importantStoryItemIds`，两条数据）、当前激活委托单 `StoreRequest.CanThisItemFillRequest` 命中的物品、`NOT_FOR_RESALE`、`MODULE_STUCK`、危险废物、上锁物品、非玩家物品、出货箱自身与嵌套出货箱。**注意**：`IMPORTANT_TAG` 与 `MACHINE`/`DOCUMENT` 都**不**作为拒售条件——IL 证实原版销售通道没有任何类型检查，只有"以物抵债 Repo"才拒机器/文件，而 Repo 是高利贷催收专用。证据见 [docs/il/quest-protection.md](docs/il/quest-protection.md)。
+- 保护（只用原生可证实的信号）：剧情关键物（运行时读取原版 `importantStoryItemIds`，两条数据）、当前激活委托单 `StoreRequest.CanThisItemFillRequest` 命中的物品、`NOT_FOR_RESALE`、`MODULE_STUCK`、危险废物、上锁物品、非玩家物品、出货箱自身与嵌套出货箱、原版自动化料斗（进料斗 hopper_in / 出料斗 hopper_out）。**注意**：`IMPORTANT_TAG` 与 `MACHINE`/`DOCUMENT` 都**不**作为拒售条件——IL 证实原版销售通道没有任何类型检查，只有"以物抵债 Repo"才拒机器/文件，而 Repo 是高利贷催收专用。证据见 [docs/il/quest-protection.md](docs/il/quest-protection.md)。
 - 赃物 / 违禁品各自有开关，默认开启。
 - 涉案：以原版基础涉案金额（`GetNegociatedValue` × `STOLEN_VALUE_INT%`）为基准，默认 ×2；违禁品固定按原版 1:1 计，不套用赃物公式，也不提供额外倍率设置。
 - 黑市声望快照：整晚所有箱子都用**睡觉开始时**的声望。≥100 减半、≥200 全免，两个开关默认开，全免优先；关闭全免后 200 仍减半。
@@ -57,7 +58,7 @@
 ```powershell
 pwsh -File .\build.ps1      # 输出 build\ShippingBin.dll
 pwsh -File .\package.ps1    # 构建 + 复制到 build\package-dev
-pwsh -File .\tools\test-rules.ps1   # 纯规则测试（363 checks，游戏外）
+pwsh -File .\tools\test-rules.ps1   # 纯规则测试（411 checks，游戏外）
 pwsh -File .\tools\scan.ps1         # 官方 manifest parser + ModScanner 静态验证
 ```
 
@@ -77,11 +78,13 @@ pwsh -File .\tools\scan.ps1         # 官方 manifest parser + ModScanner 静态
 ## 目录结构
 
 ```
-src\Core\      纯规则层（无游戏类型）：Rules / ItemFacts / Planner / Commit / Ledger / GrantPolicy
-src\Game\      游戏适配层：ModIds / Loc / ModSettings / BinItem / BinWorld /
-               FactsBuilder / NightSettlement / PendingLedger / Purchase / DebugGrant
+src\Core\      纯规则层（无游戏类型）：Rules / ItemFacts / Planner / Commit / Ledger / GrantPolicy /
+               ShapeMigration / UpgradeStatus
+src\Game\      游戏适配层：ModIds / Loc / ModSettings / BinItem / BinWorld / FactsBuilder /
+               NightSettlement / PendingLedger / Purchase / DebugGrant / BinOpenHook /
+               BinTooltip / UpgradeDragPatch
 src\ShippingBinMod.cs   IMod 入口（只做装配）
-tests\CoreTests.cs      规则/事务/记账单/形状迁移/状态机测试（363 checks）
+tests\CoreTests.cs      规则/事务/记账单/形状迁移/进度状态/料斗保护测试（411 checks）
 packaging\              manifest.xml + Localization\{zh,en}.csv
 tools\                  build/扫描/规则测试/IL 调查辅助脚本
 docs\                   决策记录、验收报告、IL 取证报告（docs\il\）
@@ -91,9 +94,11 @@ docs\                   决策记录、验收报告、IL 取证报告（docs\il\
 
 - [docs/acceptance.md](docs/acceptance.md)：改动文件清单、真实验证输出、需求对照、未验证风险、最小实机步骤
 - [docs/decisions-shipping-bin.md](docs/decisions-shipping-bin.md)：决策记录（含本次实现定稿）
-- [docs/il/](docs/il/)：本机程序集 IL 取证报告（定价、犯罪/保护、Mod API、存档持久化、任务物与禁售证据、容量档位与配置 UI）
+- [docs/il/](docs/il/)：本机程序集 IL 取证报告（定价、犯罪/保护、Mod API、存档持久化、任务物与禁售证据、容量档位与配置 UI、物品 tooltip 机制）
 - [docs/art-spec.md](docs/art-spec.md)：出货箱贴图规范（新箱子 `packaging\Textures\Items\shipping_bin_v2.png` 64×64 = 4×4 格；legacy `shipping_bin.png` 32×32 = 2×2 格，供旧存档兼容；每格 16px，透明区不占格）
-- `docs/settlement-handoff.md`、`docs/integration-review.md`、`docs/game-test-checklist.md`：历史原型记录，**不是**当前实现说明
+- [docs/HANDOFF.md](docs/HANDOFF.md)：**当前交接文档**（做到哪一步、构建/验证命令、模块地图、最近改动、边界、约定）
+- [docs/game-test-checklist.md](docs/game-test-checklist.md)：实机验收勾选清单（按轮次追加）
+- `docs/settlement-handoff.md`、`docs/integration-review.md`：早期原型记录，**不是**当前实现说明
 
 ## 安全声明
 

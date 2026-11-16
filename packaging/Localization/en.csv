@@ -13,7 +13,8 @@ upgrade_max,This shipping bin is already at max level.
 upgrade_ok,Bin capacity increased to {0}x{1}.
 upgrade_overflow,Bin is at max level. {0} extra upgrade points cannot be used (cap {1}).
 upgrade_pending_space,The bin layout does not fit the new capacity. A pending resize is now recorded (no extra material is consumed) and will be retried when you open the bin or sleep.
-log_sold,Shipping bin: sold {0} items for {1}.
+log_sold,Shipping bin: sold {0} items.
+log_sales_total,Shipping bin sales: {0}.
 log_retained,Shipping bin: kept {0} items.
 log_retained_reason,Kept: {0} - {1}
 log_crime,Shipping bin: crime value {0}
@@ -21,12 +22,7 @@ log_mislabel,Shipping bin: mislabelled goods cost {0} black market reputation (b
 log_list_separator,; 
 log_overflow_retry,Shipping bin: amounts out of range; nothing was settled and all items were kept.
 log_commit_failed,Shipping bin: settlement did not complete; items were returned where possible.
-log_commit_item,Shipping bin: the item involved was {0}
-log_commit_partial,Shipping bin: recorded {0} item(s) and {1} in cash; the rest went back into the bin
-log_commit_rolled_back,Shipping bin: rolled back {0} item(s); no cash or goods changed
 log_commit_rollback_failed,Shipping bin: the rollback did not fully succeed; check the bin contents manually
-log_commit_rollback_incomplete,Shipping bin: {0} item(s) could not be confirmed as returned ({1})
-log_commit_not_settled,Shipping bin: the settlement marker was not written; sleeping again on the same night will retry
 log_commit_ledger_failed,Shipping bin: crime/reputation bookkeeping did not fully land and will be retried on the next game load
 log_ledger_pending_retry,Shipping bin: night {0} still has landed-pending bookkeeping; it will be submitted first (no sale tonight)
 log_ledger_recovered,Shipping bin: submitted pending bookkeeping from night {0} ({1} items, {2} credits)
@@ -53,6 +49,7 @@ reason_contraband_off,contraband is disabled in settings
 reason_not_owned,not owned by you
 reason_no_value,no meaningful value
 reason_overflow,amount out of range
+reason_automation_hopper,Automation hopper (intake/outlet) is never sold
 reason_unknown,unknown reason
 crime_fencing,fencing
 crime_drug_trafficking,drug trafficking
@@ -77,3 +74,9 @@ cfg_debug_grant,debug mode: grant a bin on new game
 cfg_debug_grant_tip,Off by default. Granted once per new game; loading a save never grants again; retried if inventory is full.
 upgrade_pending_recovered,The bin automatically rearranged itself and applied the pending {0}x{1} capacity.
 upgrade_pending_load,An older bin keeps its larger storage for now; opening it or sleeping will rearrange the items and apply the capacity for its current tier.
+tooltip_upgrade_progress,Upgrade progress: {0} points; next tier at {1} points; current capacity {2}x{3}.
+tooltip_upgrade_max,Upgrade progress: max level reached ({0}/{1} points); current capacity {2}x{3}.
+tooltip_upgrade_pending,Upgrade progress: {0} points (cap {1}); pending resize to {2}x{3}, current capacity {4}x{5}.
+tooltip_upgrade_progress_unknown,Upgrade progress: {0} points; next tier at {1} points; current capacity is currently unreadable.
+tooltip_upgrade_max_unknown,Upgrade progress: max level reached ({0}/{1} points); current capacity is currently unreadable.
+tooltip_upgrade_pending_unknown,Upgrade progress: {0} points (cap {1}); pending resize to {2}x{3}; current capacity is currently unreadable.

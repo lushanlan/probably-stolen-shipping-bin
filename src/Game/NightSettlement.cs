@@ -153,47 +153,28 @@ namespace ShippingBin
             return snapshots;
         }
 
-        // 失败时如实报告：钱/货/存档标记各自处在什么状态，回滚是否真的完成。
+        // 结算失败只写模组日志，不再写入次日早间报告（用户 m02627 要求：
+        // “售出失败警告不再写入夜间报告”，避免玩家每早在报告里看到内部错误码）。
         private static void WriteFailureReport(NightPlan plan, CommitResult result)
         {
-            PlayerStore store = PlayerStore.Instance;
             string reason = string.IsNullOrEmpty(result.FailureReasonKey)
                 ? Loc.Get("log_commit_failed")
                 : Loc.Get(result.FailureReasonKey);
-            store.AddNightLog(reason, "#ff9d9d");
 
-            if (!string.IsNullOrEmpty(result.FailureItemName))
+            ShippingBinMod.WriteLog(
+                "settlement failed: phase=" + result.FailurePhase
+                + ", reason=" + reason
+                + ", item=" + (result.FailureItemName == null ? "?" : result.FailureItemName)
+                + ", sold=" + result.SoldCount
+                + ", paid=" + result.PaidAmount
+                + ", paymentStarted=" + result.PaymentStarted
+                + ", rolledBack=" + result.RolledBack
+                + ", settled=" + result.Settled
+                + ", plannedItems=" + plan.Sales.Count);
+
+            for (int i = 0; i < result.RollbackFailures.Count; i++)
             {
-                store.AddNightLog(Loc.Get("log_commit_item", result.FailureItemName), "#ff9d9d");
-            }
-            if (result.PaymentStarted)
-            {
-                store.AddNightLog(
-                    Loc.Get("log_commit_partial", result.SoldCount, result.PaidAmount),
-                    "#f0c86a");
-            }
-            if (result.RolledBack)
-            {
-                store.AddNightLog(Loc.Get("log_commit_rolled_back", plan.Sales.Count), "#9fe08f");
-            }
-            if (result.RollbackFailures.Count > 0)
-            {
-                string names = string.Empty;
-                for (int i = 0; i < result.RollbackFailures.Count && i < 3; i++)
-                {
-                    if (names.Length > 0)
-                    {
-                        names += Loc.Get("log_list_separator");
-                    }
-                    names += result.RollbackFailures[i];
-                }
-                store.AddNightLog(
-                    Loc.Get("log_commit_rollback_incomplete", result.RollbackFailures.Count, names),
-                    "#ff6b6b");
-            }
-            if (!result.Settled)
-            {
-                store.AddNightLog(Loc.Get("log_commit_not_settled"), "#f0c86a");
+                ShippingBinMod.WriteLog("rollback incomplete: " + result.RollbackFailures[i]);
             }
 
             for (int i = 0; i < result.Failures.Count; i++)
@@ -206,9 +187,12 @@ namespace ShippingBin
         {
             PlayerStore store = PlayerStore.Instance;
 
-            store.AddNightLog(
-                Loc.Get("log_sold", result.SoldCount, result.PaidAmount),
-                "#9fe08f");
+            // 销售额与件数用黑色字（用户 m02627：夜间售货文字色号不醒目）。
+            store.AddNightLog(Loc.Get("log_sold", result.SoldCount), "#000000");
+
+            // 次日早间报告（StartOfDayUIManager.InitPanel 读取 PlayerStore.nightLogs）
+            // 单独显示销售额，避免玩家只能从"件数"里推断收入。
+            store.AddNightLog(Loc.Get("log_sales_total", result.PaidAmount), "#000000");
 
             if (plan.Retained.Count > 0)
             {

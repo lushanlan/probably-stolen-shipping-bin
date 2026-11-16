@@ -199,6 +199,20 @@ namespace ShippingBin.Core
         }
 
         /// <summary>
+        /// 下一档的累计点数阈值（25 / 100 / 300）；已满级返回 0。
+        /// 只用于 tooltip 文案，不参与任何数值/规则计算。
+        /// </summary>
+        public static int NextThresholdFor(int points)
+        {
+            // 从下标 1 开始：thresholds[0]=0 表示初始档位，不是“下一档”。
+            for (int i = 1; i < CapacityThresholds.Length; i++)
+            {
+                if (CapacityThresholds[i] > points) return CapacityThresholds[i];
+            }
+            return 0;
+        }
+
+        /// <summary>
         /// 只增不减：仅当目标档位的格子数严格大于当前形状才应用 SetShape。
         /// 保护旧存档里已经更大的容器（例如旧版 12x12=144 格、点数还没到 25 的箱子），
         /// 避免读档/升级时缩容导致格内物品丢失。当前形状未知（<=0）时按需要应用。

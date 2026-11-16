@@ -74,6 +74,15 @@ namespace ShippingBin
         internal const string TagIgnoreChildValue = "IGNORE_CHILD_VALUE";
         internal const string TagModuleStuck = "MODULE_STUCK_TAG";
 
+        // 原版自动化传送料斗（进料斗 / 出料斗）。IL 已证实（docs/il/quest-protection.md §8）：
+        // HopperHelper.CreateIntake() 的 identifier 是 hopper_in 并打 HOPPER_INTAKE_TAG，
+        // HopperHelper.CreateOutlet() 的 identifier 是 hopper_out 并打 HOPPER_OUTLET_TAG，
+        // HopperHelper.IsIntake/IsOutlet 也只按这两个 tag 判断。
+        // 玩家用它们做自动化，任何一端被卖掉都会破坏已有产线，因此不得出售。
+        internal const string TagHopperIntake = "HOPPER_INTAKE_TAG";
+        internal const string TagHopperOutlet = "HOPPER_OUTLET_TAG";
+        internal static readonly string[] AutomationHopperIds = new string[] { "hopper_in", "hopper_out" };
+
         // 图集与贴图：默认使用原版已存在的容器贴图（DLL 字符串证据），
         // 避免本 mod 不带 Textures 资源时显示 unknown 占位。
         internal const string BinAtlas = "Items/items_container";
