@@ -1,7 +1,7 @@
 param(
     [string]$Version = '0.1.0',
-    [string]$PublishedFileId = '0',
-    [int]$Visibility = 2
+    [string]$PublishedFileId = '3840748573',
+    [int]$Visibility = 0
 )
 # 生成 SteamCMD Workshop 上传用 VDF（只生成文件，不登录、不上传）。
 # 用法：pwsh -File .\tools\make-workshop-vdf.ps1
