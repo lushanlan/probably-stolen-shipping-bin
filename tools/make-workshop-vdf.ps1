@@ -68,7 +68,7 @@ function Read-Text([string]$name) {
     return (Get-Content -LiteralPath $p -Raw).Trim()
 }
 $description = (Read-Text 'description.zh.txt') + "`n`n---`n`n" + (Read-Text 'description.en.txt')
-$title = '出货箱 · Shipping Bin'
+$title = '可能是星露谷：出货箱 | Shipping Bin'
 $changenote = "v$Version 首个发行候选：夜间统一结算、四档容量 100/170/340/960、材料拖拽升级与进度提示、赃物/违禁/假贴标规则、自动化料斗保护、早间报告销售额。"
 $template = Get-Content -LiteralPath (Join-Path $root 'packaging\workshop\workshop.vdf.template') -Raw
 
