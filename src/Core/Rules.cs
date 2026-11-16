@@ -55,21 +55,37 @@ namespace ShippingBin.Core
         public const int MislabelPenaltyMax = 20;
 
         // === 购买 =========================================================
-        // [开发提案] 价格 500，购买货币为 WildFavor（王尔德的恩惠）。
+        // [用户定案] 价格 2000，购买货币为 WildFavor（王尔德的恩惠）。
         // [用户定案] 每个游戏日最多购买一次，睡觉进入次日重置。
-        public const int PurchasePrice = 500;
+        public const int PurchasePrice = 2000;
         public const int PurchaseCooldownDays = 1;
 
         // === 容量成长 =====================================================
-        // [开发提案] 初始 6x6；累计 5 点 -> 8x8；15 点 -> 10x10；30 点 -> 12x12。
-        // [用户定案] 满级容量必须“明显大于原版大型容器”。
-        // 本机原版大型容器证据：BackpackLarge 8x9=72 格、BackpackLargeMilitary 7x11=77 格；
-        // 满级 12x12=144 格，约为原版最大背包的 1.9 倍，满足“明显大于”。
-        public const int BaseCapacitySize = 6;
-        public const int MaxCapacitySize = 12;
-        public static readonly int[] CapacityThresholds = new int[] { 0, 5, 15, 30 };
-        public static readonly int[] CapacitySizes = new int[] { 6, 8, 10, 12 };
-        public const int MaxUpgradePoints = 30;
+        // [用户定案] 四档，名称与尺寸对照原版“储藏区”系列（尺寸取自本机 IL，非按名字猜）：
+        //   0 点   储藏区            10 x 10 = 100 格
+        //          依据 ShipSystemDirectory.StorageBay(): DirectoryUtils.CreateInventoryWindow(10,10,true)
+        //   25 点  储藏区（扩建）    17 x 10 = 170 格
+        //          依据 ShipSystemDirectory.StorageBayLarge(): CreateInventoryWindow(17,10,true)
+        //   100 点 两倍扩建储藏区    17 x 20 = 340 格
+        //          原版没有 340 格的储藏区物品；此处按“宽高各翻一倍中的高翻倍”取 2 x 170 推导
+        //          （用户定名“两倍扩容储藏区”，本值属推导而非原版物品尺寸）。
+        //   300 点 超科技储藏区      32 x 30 = 960 格（单页、单网格）
+        //          依据 ShipSystemDirectory.HyperTechBay(): 两个 new GameGridInventory(16,30) 分两页，
+        //          合计 960 格。[用户定案] 末档必须给满 960，不允许只给半页（480）。
+        //          多页方案需要 MachineryTabs/MachineryContainer，原版只用于机器窗口，
+        //          没有“可移动多页容器”先例，且改多节点会让旧存档的节点序号错位、
+        //          解码时静默丢货；因此本模组用单页 32x30 等容实现。
+        //          UI 限制：内容区宽度 32*16=512px，低分辨率/UI 缩放下可能超出屏幕，且无滚动。
+        // 以上差异（340 为推导、960 为单页等价而非原版两页结构）必须在交付说明中明列。
+        // [用户定案] 累计点数上限 300，超过部分作为溢出提示，不再继续扩容。
+        public const int BaseCapacityWidth = 10;
+        public const int BaseCapacityHeight = 10;
+        public const int MaxCapacityWidth = 32;
+        public const int MaxCapacityHeight = 30;
+        public static readonly int[] CapacityThresholds = new int[] { 0, 25, 100, 300 };
+        public static readonly int[] CapacityWidths = new int[] { 10, 17, 17, 32 };
+        public static readonly int[] CapacityHeights = new int[] { 10, 10, 20, 30 };
+        public const int MaxUpgradePoints = 300;
 
         // [用户定案] 可替代升级点数：垃圾 1、废金属 2、金属锭 5。
         public const int JunkPoints = 1;
@@ -149,17 +165,7 @@ namespace ShippingBin.Core
 
         // === 容量与升级 ===================================================
 
-        public static int CapacitySizeFor(int points)
-        {
-            if (points < 0) points = 0;
-            int size = CapacitySizes[0];
-            for (int i = 0; i < CapacityThresholds.Length; i++)
-            {
-                if (points >= CapacityThresholds[i]) size = CapacitySizes[i];
-            }
-            return size;
-        }
-
+        /// <summary>当前点数对应的档位下标（0=初始储藏区，3=超科技储藏区）。</summary>
         public static int CapacityLevelFor(int points)
         {
             if (points < 0) points = 0;
@@ -171,9 +177,37 @@ namespace ShippingBin.Core
             return level;
         }
 
+        public static int CapacityWidthFor(int points)
+        {
+            return CapacityWidths[CapacityLevelFor(points)];
+        }
+
+        public static int CapacityHeightFor(int points)
+        {
+            return CapacityHeights[CapacityLevelFor(points)];
+        }
+
+        /// <summary>档位格子数（宽 x 高），用于测试与提示。</summary>
+        public static int CapacityCellsFor(int points)
+        {
+            return CapacityWidthFor(points) * CapacityHeightFor(points);
+        }
+
         public static bool IsMaxedOut(int points)
         {
             return points >= MaxUpgradePoints;
+        }
+
+        /// <summary>
+        /// 只增不减：仅当目标档位的格子数严格大于当前形状才应用 SetShape。
+        /// 保护旧存档里已经更大的容器（例如旧版 12x12=144 格、点数还没到 25 的箱子），
+        /// 避免读档/升级时缩容导致格内物品丢失。当前形状未知（<=0）时按需要应用。
+        /// </summary>
+        public static bool ShouldApplyShape(int currentWidth, int currentHeight, int targetWidth, int targetHeight)
+        {
+            if (targetWidth <= 0 || targetHeight <= 0) return false;
+            if (currentWidth <= 0 || currentHeight <= 0) return true;
+            return (long)targetWidth * targetHeight > (long)currentWidth * currentHeight;
         }
 
         /// <summary>材料对应的升级点数；非升级材料返回 0。</summary>
@@ -198,8 +232,12 @@ namespace ShippingBin.Core
             UpgradeOutcome outcome = new UpgradeOutcome();
             if (currentPoints < 0) currentPoints = 0;
             outcome.OldPoints = currentPoints;
-            outcome.OldSize = CapacitySizeFor(currentPoints);
+            outcome.OldWidth = CapacityWidthFor(currentPoints);
+            outcome.OldHeight = CapacityHeightFor(currentPoints);
+            outcome.OldSize = outcome.OldWidth * outcome.OldHeight;
             outcome.NewPoints = currentPoints;
+            outcome.NewWidth = outcome.OldWidth;
+            outcome.NewHeight = outcome.OldHeight;
             outcome.NewSize = outcome.OldSize;
             outcome.AtMaxBefore = IsMaxedOut(currentPoints);
             outcome.Accepted = false;
@@ -217,7 +255,9 @@ namespace ShippingBin.Core
             {
                 outcome.NewPoints = raw;
             }
-            outcome.NewSize = CapacitySizeFor(outcome.NewPoints);
+            outcome.NewWidth = CapacityWidthFor(outcome.NewPoints);
+            outcome.NewHeight = CapacityHeightFor(outcome.NewPoints);
+            outcome.NewSize = outcome.NewWidth * outcome.NewHeight;
             return outcome;
         }
 
@@ -242,6 +282,11 @@ namespace ShippingBin.Core
         public bool AtMaxBefore;
         public int OldPoints;
         public int NewPoints;
+        public int OldWidth;
+        public int OldHeight;
+        public int NewWidth;
+        public int NewHeight;
+        /// <summary>档位格子数（宽 x 高）。</summary>
         public int OldSize;
         public int NewSize;
         public int Overflow;

@@ -17,8 +17,8 @@
 - 理由：用户明确要求；目前仅完成文档级初查，未完成本机 API 与游戏内验证。
 
 ## 调查依据与边界
-- 官方文档：https://github.com/dragonpan2/probably-stolen-modding/blob/main/ModdingGuide.md
-- 官方变更记录：https://github.com/dragonpan2/probably-stolen-modding/blob/main/APIChanges.md
+- 官方文档：https://github.com/dragonpan2/probably stolen modding/blob/main/ModdingGuide.md
+- 官方变更记录：https://github.com/dragonpan2/probably stolen modding/blob/main/APIChanges.md
 - 文档提供模组设置、夜间事件和按存档保存的模组数据接口。
 - 本机版本、容器序列化、物品计价、买店状态、材料 ID 及结算保存顺序仍需代码核实。
 - 设计建议尚未由用户确认，不作为已定需求。
@@ -65,7 +65,7 @@
 
 ## 本机升级实现调查与容量目标
 - 结论：满级容量明显大于原版大型容器（Q20 B）。具体尺寸待核实原生容器后提案。
-- 本机 Assembly-CSharp.dll 静态 IL 检查：MachineBottlePrinter 用 BOTTLE_PRINTER_UPGRADE_COUNT_TAG 记录每件机器进度；3 次、9 次分别解锁档位，输出格子从 4x4 变成 5x4、6x4。
+- 本机 Assembly CSharp.dll 静态 IL 检查：MachineBottlePrinter 用 BOTTLE_PRINTER_UPGRADE_COUNT_TAG 记录每件机器进度；3 次、9 次分别解锁档位，输出格子从 4x4 变成 5x4、6x4。
 - 材料入口：MaterialDirectory.Electronic 的目标使用回调调用 UpgradePrinter；ModuleHelper.CanElectronicPartTarget 检查材料和目标所有权及可升级条件。
 - UpgradePrinter 增加进度、把材料 unitValue 加到机器价值、调用 StartingPerkContent.ConsumeUpgradeMaterial 并播放音效；不是通用点数升级 API，出货箱需要自有进度与材料适配。
 - ConsumeUpgradeMaterial 会在 StartingPerk.IsTinkerer 且 RNG.Roll(20) 成功时保留材料，否则 Destroy 材料。是否让出货箱继承此效果待确认。
@@ -102,7 +102,7 @@
 - 黑市声望有 StoreReputation.GetBMReputation / ModBMReputation。
 - GetVendingPrice 调用 GetCurrentValue(true,true,false,true,0)，参数分别为 useRetailMarkup、withChild、includeEvents、forceMarkup、extraMarketMod；不能把这些布尔值误解为真假估值开关。真假特征累计尚需继续追踪。
 - SecData.CheckDeliveredStolen 使用 STOLEN_TAG 和 STOLEN_VALUE_INT，以传入价值乘标签百分比，再 ApplyCrimeModifier，最后 CommitCrime(FENCING)。不能把 STOLEN_VALUE_INT 直接视为涉案金额。
-- 睡觉按钮正常路径为 EndNight -> BeginDay -> SaveGame；EndNight 内含 GoingSleep 和 HandlingNightlyServices 事件，故夜间出货可在正常保存前完成。异常退出与特殊结束分支仍需测试。
+- 睡觉按钮正常路径为 EndNight  > BeginDay  > SaveGame；EndNight 内含 GoingSleep 和 HandlingNightlyServices 事件，故夜间出货可在正常保存前完成。异常退出与特殊结束分支仍需测试。
 - 自动售货机销售还调用 MarkStolenOrContrabandSale 和 PerformOnSoldCheck，出货箱必须核对副作用后选择性接入，避免重复处罚。
 - 尚未制作或运行原型；大容量界面上限、完整标签计价和存档往返仍未验证。
 
@@ -124,11 +124,11 @@
 - InitContainerItemIncludeContainer 用于允许容器进入；嵌套出货箱保护尚未完成。
 - 尚未实现夜间销售，不能安装此原型用于正常游戏。任务物品识别、计价、犯罪与结算事务仍待完成。
 
----
+
 
 # 实现定稿（2026-11-16，DeepSeek Harness 接手后）
 
-本节记录正式实现（`src\Core\*` + `src\Game\*`）相对旧原型的决策变化。旧原型已被重写，本节以本机 `Assembly-CSharp.dll` 的 IL 取证为准；取证报告见 `docs\il\pricing.md`、`docs\il\crime-protection.md`、`docs\il\mod-api.md`、`docs\il\persistence.md`。
+本节记录正式实现（`src\Core\*` + `src\Game\*`）相对旧原型的决策变化。旧原型已被重写，本节以本机 `Assembly CSharp.dll` 的 IL 取证为准；取证报告见 `docs\il\pricing.md`、`docs\il\crime protection.md`、`docs\il\mod api.md`、`docs\il\persistence.md`。
 
 ## 分层架构
 
@@ -212,41 +212,150 @@
 
 ## 1. 任务物保护与"禁售"改为证据驱动
 
-- 依据：`docs\il\quest-protection.md`（Cecil 只读，逐条给方法签名与 IL 语义）。
+- 依据：`docs\il\quest protection.md`（Cecil 只读，逐条给方法签名与 IL 语义）。
 - 剧情物只有 `GeneralHelper.importantStoryItemIds` 两条（`luxury_supply_crate`、`self_refilling_neuroactive_perfume`）；
-  全库没有 Quest/Objective 任务系统，任务是 `StoreRequest`，按 identifier 运行时匹配，
-  `CanThisItemFillRequest(item)` 是原版自己的谓词。
+- 全库没有 Quest/Objective 任务系统，任务是 `StoreRequest`，按 identifier 运行时匹配，
+- `CanThisItemFillRequest(item)` 是原版自己的谓词。
 - `IMPORTANT_TAG` 112 处工厂写入、仅 4 处读取，没有一处是"客户不买"；
-  `PlayerStore.SellItem` 无类型检查；`MACHINE`/`DOCUMENT` 只出现在"以物抵债 Repo"，
-  而 `Repo()` 唯一调用者是高利贷催收 ⇒ 不能当禁售证据。
+- `PlayerStore.SellItem` 无类型检查；`MACHINE`/`DOCUMENT` 只出现在"以物抵债 Repo"，
+- 而 `Repo()` 唯一调用者是高利贷催收 ⇒ 不能当禁售证据。
 - 因此保护规则改为：剧情物数据表 ∪ 激活委托单命中 ∪ `NOT_FOR_RESALE` ∪ `MODULE_STUCK_TAG`
-  ∪ 危险废物 ∪ 锁。**不按 IMPORTANT_TAG、不按 MACHINE/DOCUMENT 拒售**。
+- ∪ 危险废物 ∪ 锁。**不按 IMPORTANT_TAG、不按 MACHINE/DOCUMENT 拒售**。
 - 明确不宣称"能保证所有任务物不卖"：剧情脚本内部若有别的背包检查分支、或委托单在睡觉前过期，
-  静态证据覆盖不到，已列为需实机验证的边界。
+- 静态证据覆盖不到，已列为需实机验证的边界。
 
 ## 2. 付款后的记账改为持久记账单（写入式 + 至多一次恢复）
 
 - 旧行为的问题：付款成功后 `ApplyCrime`/`ApplyMislabel` 失败只写日志，同晚又写 day 标记 ⇒ 处罚永久丢失。
 - 新结构：`src\Core\Ledger.cs`（纯规则：行状态机、编解码、按已付款子集生成、至多一次解析）
-  + `src\Game\PendingLedger.cs`（modData 落盘、逐行提交、恢复）
-  + `src\Core\Commit.cs` 的 `IObligationLedger` 契约。
+- + `src\Game\PendingLedger.cs`（modData 落盘、逐行提交、恢复）
+- + `src\Core\Commit.cs` 的 `IObligationLedger` 契约。
 - 顺序：先落盘账本 → 逐行 `Pending → InFlight → 落盘 → 提交 → Applied → 落盘`；
-  任一行失败即停，`ObligationsDone=false`，**不写 day 标记**；
-  下次读档（`OnGameLoadedLate`）或睡觉开头先 `Recover`，成功后再结算。
+- 任一行失败即停，`ObligationsDone=false`，**不写 day 标记**；
+- 下次读档（`OnGameLoadedLate`）或睡觉开头先 `Recover`，成功后再结算。
 - 至多一次：崩溃/异常后遗留的 `InFlight` 一律视为已生效（`ResolveInFlight`），宁可少扣一次也不重复扣；
-  涉案幂等用 `secData.GetCrimeIndex(type) < 0` 判"首次出现"，提交后仍查不到该类型则抛异常留给重试。
+- 涉案幂等用 `secData.GetCrimeIndex(type) < 0` 判"首次出现"，提交后仍查不到该类型则抛异常留给重试。
 - 只按已付款子集：`SettlementLedger.FromPaid` 的金额、假标签 1%、涉案都由**付款成功的条目**重算；
-  第二件付款失败时账本只含第一件（金额 80、假标签 1、涉案 200），未付款条目回箱且零记账义务。
+- 第二件付款失败时账本只含第一件（金额 80、假标签 1、涉案 200），未付款条目回箱且零记账义务。
 
 ## 3. 测试与验证
 
 - `tests\CoreTests.cs` 增至 **315** 条（新增 `Ledger`、`CommitLedger` 两组）：账本编解码往返与非法文本拒绝、
-  子集金额/假标签/涉案重算、`InFlight` 至多一次、账本失败不写 day、账本抛异常、第二件付款失败只记第一件。
-- 真实流水线：`build.ps1` → Built；`test-rules.ps1` → 315 passed；`package.ps1` → `build\package-dev`；
-  `tools\scan.ps1` → `Refused=False`、`MethodsScanned=198`、Findings 全空。哈希见 `docs\acceptance.md` §7.4。
+- 子集金额/假标签/涉案重算、`InFlight` 至多一次、账本失败不写 day、账本抛异常、第二件付款失败只记第一件。
+- 真实流水线：`build.ps1` → Built；`test rules.ps1` → 315 passed；`package.ps1` → `build\package dev`；
+- `tools\scan.ps1` → `Refused=False`、`MethodsScanned=198`、Findings 全空。哈希见 `docs\acceptance.md` §7.4。
 
 ## 4. 边界（不做没证据的规则）
 
 - 不把"装配设备/文件"整体禁售：原版销售通道没有这条规则，用户也未授权该取舍。
 - 不宣称账本金额级幂等：`SecData` 没有按类型读金额的公开接口，只能做"类型是否已出现"的最小验证。
 - 账本恢复、委托单过期时序、锁状态读档顺序都必须实机确认。
+
+# 第四轮：容量四档、购价 2000、倍率文本框、贴图接入（2026-11-16）
+
+用户定案（m01486 / m01489）：购价改 **2000**；容量四档依次为原版“储藏区”→ 25 点“储藏区（扩建）”→ 100 点“两倍扩建储藏区”→ 300 点“超科技储藏区”，删去原 50 阈值；旧存档不得因缩容丢货。
+
+## 1. 容量：先核原版，再定档位
+
+- 原版实际尺寸（Cecil 只读，`ShipSystemDirectory`）：`StorageBay()` = `CreateInventoryWindow(10,10,true)`（100 格，unitValue 300）；`StorageBayLarge()` = `(17,10)`（170 格，850）；`HyperTechBay()` = 一个机器窗口两页，每页 `new GameGridInventory(16,30)`（480 格/页，共 960，unitValue 10000）；`MakeshiftStorageBay()` 为非矩形 shape（宽 10）。全部名称取自 Unity 本地化 bundle，不是按英文名猜。
+- 原版“扩建”机制 `StorageExpansionHelper.Expand` 只增加页签（`MAX_TABS=5`、kit tabs 2/1、`KIT_VALUE=1063`），并把套件 unitValue 加到容器价值。本模组**不采用**：升级只扩单网格，且不做材料增值（用户规格 7）。
+- 结论映射：`CapacityThresholds={0,25,100,300}`，`CapacityWidths={10,17,17,16}`，`CapacityHeights={10,10,20,30}`，`MaxUpgradePoints=300`。
+- 必须向用户明示的两点差异：**340 格（17×20）是 2×170 的推导值**，原版无此物品；~~480 格是原版超科技储藏区的单页~~（**第 5 轮已被推翻**：用户定案末档必须 960，改为单页 32×30 等容，见文末“第五轮”）。
+- 证据与复现命令见 `docs\il\capacity and config.md`。
+
+## 2. 不缩容：旧存档数据保护
+
+- 旧版容量为 6×6→12×12（上限 30 点）；旧档可能已有 12×12 = 144 格且点数 < 25，而新 0–24 点目标是 10×10 = 100 格。
+- 直接 `SetShape` 会让箱内物品失去合法位置，读档时 `UncheckedAccept` 序号错位只 `Debug.LogWarning`（静默丢货，见 `docs\il\persistence.md`）。
+- 实现 `Rules.ShouldApplyShape(curW,curH,newW,newH)`：仅当目标格子数**严格更大**才应用；`BinItem.ApplySize` 先读当前尺寸再决定。
+- 当前尺寸用 `grid.widthPixels / UISettings.current.gridSize` 反推（`gridSize=16`，IL 已证实）；不用 `grid.inventoryShape`，因为 `GridShape` 类型在本机 csc 下是 `CS0570`（成员类型不受语言支持），也不再用反射（会触发扫描器 `reflection external`）。
+- 结果：旧 12×12 箱子保持 144 格，累计到 25 点（170 > 144）才长到 17×10。
+
+## 3. 倍率设置：滑条改原生文本框
+
+- 根因：`ModConfigWindow.BuildEntry` 只有 `IsNumber && HasRange` 才用 `AddSlider`，而滑条**没有数值回显**。
+- 无范围的数值会走 `AddInput`：显示当前值、可直接输入；`Apply()` 时 `ReadWidget` 用 `float.TryParse(NumberStyles=167, InvariantCulture)` 解析后 `ApplyBoxed`。
+- 因此三个倍率的 `Define` 传 `null, null`（不定范围），范围仍由 tooltip 文案 + `ModSettings.Snapshot()` 的 `Clamp` 保证；中英文 tooltip 均保留并写明“直接输入数字”与合法范围。
+- 证据见 `docs\il\capacity and config.md` §5。
+
+## 4. 贴图接入（美术由用户出图）
+
+- 代码优先 `SetSpriteAndShapeFromMod(modId, "shipping_bin")`：在 `ModLoader.Mods` 找 `Manifest.ID == 本 mod`，`Sprites` 命中才用；否则回退原版 `Items/items_container::eleanor_box`。
+- 打包：`package.ps1` 若发现 `packaging\Textures` 则递归复制到包内，否则打印“使用原版容器贴图”。
+- 规范（每格 16px、宽高为 16 的倍数、建议 32×32、透明区不占格、格中心 alpha>0 即占格、只扫描 `Textures\Items` 直属目录、key 为文件名）写入 `docs\art spec.md`。
+- 未生成任何美术资源，未改 art 目录。
+
+## 5. 测试与验证（第 4 轮）
+
+- `tests\CoreTests.cs` 增至 **336** 条：四档尺寸/等级、`ShouldApplyShape` 7 条（含旧 12×12 不缩容）、`ApplyUpgradePoints` 跨档与溢出（299+5 → 300 溢出 4；298+5 溢出 3；满级拒绝）、`PurchasePrice = 2000`。
+- 真实流水线：`build.ps1` → Built；`test rules.ps1` → 336 passed；`package.ps1` → `build\package dev`；`tools\scan.ps1` → `Refused=False`、`MethodsScanned=203`、Findings 全空。哈希见 `docs\acceptance.md` §8.4。
+
+## 6. 边界
+
+- 16×30 单页的实际操作手感、17×20 推导档的平衡，需实机确认。
+- 旧档容器保持 144 格（大于新档同点数容量）是有意的数据保护，不做迁移。
+- 倍率非法输入原版不提交；越界值被 `Snapshot()` clamp，但配置文件保留玩家原值。
+- `UISettings.gridSize` 若被其他 mod 改动，形状反推随之变化（读运行时值，未硬编码）。
+
+# 第五轮：末档 960、形状迁移、正视贴图（2026-11-16）
+
+## 1. 末档 960 而非 480
+- 原版 `ShipSystemDirectory.HyperTechBay()` 两页各 `new GameGridInventory(16,30)` = 480，合计 **960**（IL 已证实）。
+- 用户明确：末档必须完整 960，不允许只给半页；若单页 32×30 能可靠显示可等容，但必须说明 UI 限制。
+- 选择单页 32×30 单网格，而不是改多页容器：多页需要 `MachineryTabs`/`MachineryContainer`，原版只用于机器窗口，没有“可移动多页容器”先例；把 contentWindow 改成多节点会让旧存档的“物品 + 非物品节点 BFS 序号”错位，解码只 `Debug.LogWarning` 并静默丢货。
+- 代价：内容区宽 `32 × 16 = 512px`，低分辨率/UI 缩放下可能超出屏幕且无滚动条；原版每页宽 256px。需实机确认是否可接受。
+
+## 2. 形状迁移必须重排而非只看面积
+- 12×12(144) → 17×10(170) 面积变大但高度变矮，原本在 y=10/11 的物品会越界；`GameGridInventory.SetShape` 只重算像素与背景，不检查物品位置（IL 已证实）。
+- 规则层新增 `src/Core/ShapeMigration.cs`：`Decide(curW, curH, tgtW, tgtH)` → `None` / `ApplyDirect`（真超集）/ `Relocate`（互有增减）/ `KeepCurrent`（缩容或目标非法）。
+- 适配层 `BinItem.ApplySize(bin, allowRelocation)`：升级路径允许重排，执行“取出全部 → SetShape → 逐件 `GraphUtils.TryAcceptAll` 放回”，全部成功才写 `TagShapeApplied = 宽×1000+高`；失败则恢复原形状并原样放回，提示 `upgrade_pending_space`（材料已消耗、点数保留、下次腾出空间再拖材料）。
+- 读档 `onLoaded` 传 `allowRelocation = false`：只做真超集扩容，绝不静默重排玩家摆放。
+
+## 3. 倍率文本框（延续第 4 轮）
+- 三个倍率保持“无 min/max 的 float 定义”，走原版 `AddInput` 原生文本框（显示当前值、可直接输入）；范围由 tooltip + `Snapshot()` 的 Clamp 保证。本轮未改该逻辑。
+
+## 4. 正视贴图接入
+- 轴测图弃用；使用 `art/wooden shipping bin front.png`（1024×1024 正视图，用户 API 生成并确认）。
+- 处理：裁 alpha bbox（134..889 × 169..872）→ 等比缩放进 32×32（内容 32×30，偏移 (0,1)）→ 预乘 alpha 盒式降采样消除暗边 → 边缘 alpha 40/110 清理 → 四格中心 (8,8)/(24,8)/(8,24)/(24,24) 全部 255（2×2 占格）。
+- 产物 `packaging/Textures/Items/shipping_bin.png`（32×32，2,553 B）；来源图保留在 `art/`。
+- 运行时：`BinItem.TryApplyModSprite` 先探测 `ModLoader.Mods[].Sprites`，有图调 `SetSpriteAndShapeFromMod(modId, "shipping_bin")`，无图回退原版 `Items/items_container::eleanor_box`。
+
+## 5. 验证（第 5 轮）
+- `tests\CoreTests.cs` 增至 **349** 条：容量末档 960（32×30）、跨档/溢出期望更新、`ShapeMigration.Decide` 13 条（含 12×12→17×10 必须重排、17×20→17×10 缩容保持、旧 12×12→32×30 为超集）。
+- 真实流水线：`build.ps1` → Built；`test rules.ps1` → 349 passed；`package.ps1` → `Included mod textures` + `build\package dev`；`tools\scan.ps1` → `Refused=False`、`MethodsScanned=209`、Findings 全空。包内 5 文件哈希见 `docs\acceptance.md` §9.4。
+
+## 6. 边界
+- 32×30 单页 UI 显示/操作需实机；若不可接受，需要多页容器改造（会牵动存档结构，另行设计）。
+- 原版是两页 16×30，本实现是单页 32×30 等容，交互形态与原版不完全一致。
+- 重排逻辑的规则层已测；实机 `Expel`/`TryAcceptAll` 的重排手感与失败回滚需实测（含塞满后升级）。
+- 贴图 alpha 清理阈值（40/110）针对当前素材；换素材需重调并复查四格中心。
+- 旧档 12×12 在点数 < 25 时保持 12×12（不缩容），属有意的数据保护。
+
+# 第六轮：待扩容恢复、读档解码顺序、4×4 本体贴图（2026-11-16）
+
+## 1. 待扩容（pending resize）取代“再拖材料”
+- 触发场景：拖材料升级时点数已加、材料已消耗，但箱内布局放不下新形状（`RelocateIntoShape` 逐件放回失败）。
+- 旧实现留下不可恢复状态：`CanUpgrade` 在 300 点直接拒绝，玩家无法再次触发迁移。
+- 定案：失败时把目标尺寸写入 `lushanlan.shipping_bin.pending_shape`（`宽*1000+高`），并提示“已记下待扩容，不再消耗材料”；`CanUpgrade` 对“满级但有待扩容”放行；`DoUpgrade` 先零消耗重试一次；开箱（Harmony prefix）与睡觉（结算前）各重试一次。成功才清除标记并写夜报。
+- 理由：迁移是否成功取决于箱内当前布局，只有玩家实际整理后才能确定；不消耗材料是避免玩家为失败付两次成本。
+
+## 2. 读档先建最大画布，绝不先缩小
+- 证据：`SaveItemNode` 不保存 inventory 形状；`SaveManager.DecodeNodesInternal` 先用工厂建物品、再按节点序号 `UncheckedAccept` 挂回子物品（不校验形状、不调 onLoaded）；`PlayerStore.LoadGame` 通过 `DecodeSaveItem` 触发 `onLoaded`，此时子物品已挂回。
+- 定案：工厂一律 `CreateInventoryWindow(32,30)`；新建箱子由 `PrepareFresh` 收窄到 10×10；旧档（无 `TagShapeApplied`）保留 32×30 + 写 `pending_shape`，等开箱/睡觉迁移；新档按 `TagShapeApplied` 恢复上次形状。
+- 理由：若工厂按当前档位建小画布，旧档物品在挂回瞬间就落在界外，之后扩容也不会把它们移回来（UI 里“消失”）。最大画布是唯一不需要几何判定的安全做法（`GridShape` 在本机 csc 中不可引用）。
+
+## 3. 本体 4×4 与贴图版本化
+- 用户要求箱子本体占格 4×4（64×64，16px/格），并验证 16 个格中心 alpha>0。
+- 兼容问题：第 5 轮构建已把 sprite key `shipping_bin`（32×32，2×2）写进过玩家存档；若把 64×64 图直接放回同名 key，旧 2×2 物品会顶着 4×4 贴图渲染，并可能与背包邻格重叠。
+- 定案：新 key `shipping_bin_v2`（64×64，4×4）；旧 key `shipping_bin` 保留为 32×32 legacy；`OnLoaded` 按存档 `spriteAtlasPath/spritePath` 恢复对应贴图（v2→4×4、legacy→2×2、无记录→原版容器图）。
+- 另据 IL：存档不保存 `useSpriteFromMod`，读档必须重新 `SetSpriteAndShapeFromMod`，否则贴图解析走原版图集显示 unknown。旧 2×2 箱子保持 2×2 占格（不自动涨到 4×4），因为无法静态验证 4×4 是否会与邻格碰撞；列入实机验证。
+
+## 4. 验证
+- `tools\test-rules.ps1`：363 checks（新增 `TryDecodeShape` 7 条、`DecideOnLoad` 7 条）。
+- `build.ps1` / `package.ps1` / `tools\scan.ps1`：Refused=False、MethodsScanned=220、Findings 全空。
+- 包内新增/变更：`Textures\Items\shipping_bin_v2.png`（9,608 B）、`shipping_bin.png`（2,749 B，legacy 32×32）。
+
+## 5. 边界
+- 旧 2×2 箱子不自动变 4×4；需要时由玩家取出重放或另行迁移。
+- 打开箱子的重试依赖 `ItemMouseDoubleClickHandler.OpenContentAction`；绕过它的路径会推迟到睡觉。
+- 32×30 窗口在低分辨率的可读性、迁移后物品摆放位置的具体观感需实机确认。

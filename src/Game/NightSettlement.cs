@@ -58,6 +58,24 @@ namespace ShippingBin
                         ownedBins.Add(bins[i]);
                     }
                 }
+
+                // 睡觉是安全时机之一：把“点数已到档但箱内布局放不下”的待扩容迁移重试一次。
+                // 失败只会保留原状并提示，不影响本夜结算。
+                for (int i = 0; i < ownedBins.Count; i++)
+                {
+                    try
+                    {
+                        if (BinItem.HasPendingSize(ownedBins[i]))
+                        {
+                            BinItem.TryApplyPendingSize(ownedBins[i], true);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        ShippingBinMod.WriteLog("pending size retry before settlement failed: " + ex.Message);
+                    }
+                }
+
                 if (ownedBins.Count == 0)
                 {
                     return;

@@ -1,5 +1,5 @@
 item_name,Shipping Bin
-item_description,A container that sells its legal contents when you sleep. You can still take things back before sleeping.
+item_description,A container that sells its legal contents when you sleep. You can still take things back before sleeping. Starts at 10x10; 25 points grows it to 17x10, 100 points to 17x20, 300 points to 32x30 (960 cells, single page).
 purchase_title,Shipping Bin
 purchase_description,Buy a shipping bin. One purchase per day.
 purchase_subtitle,Buy a shipping bin
@@ -10,8 +10,9 @@ purchase_no_space,Not enough inventory space to buy a shipping bin.
 debug_grant_ok,Debug mode: granted one shipping bin.
 debug_grant_pending,Debug mode: not enough space. The bin will be granted later automatically.
 upgrade_max,This shipping bin is already at max level.
-upgrade_ok,Bin capacity increased to {0}x{0}.
+upgrade_ok,Bin capacity increased to {0}x{1}.
 upgrade_overflow,Bin is at max level. {0} extra upgrade points cannot be used (cap {1}).
+upgrade_pending_space,The bin layout does not fit the new capacity. A pending resize is now recorded (no extra material is consumed) and will be retried when you open the bin or sleep.
 log_sold,Shipping bin: sold {0} items for {1}.
 log_retained,Shipping bin: kept {0} items.
 log_retained_reason,Kept: {0} - {1}
@@ -59,9 +60,9 @@ crime_weapon_trafficking,weapon trafficking
 crime_card_trafficking,ID trafficking
 crime_contraband_trafficking,contraband trafficking
 cfg_sale_multiplier,sale multiplier
-cfg_sale_multiplier_tip,Multiplies the current displayed value (0.0 to 5.0, default 0.8).
+cfg_sale_multiplier_tip,Multiplies the current displayed value. Type a number directly. Valid range 0.0 to 5.0, default 0.8.
 cfg_stolen_multiplier,stolen crime multiplier
-cfg_stolen_multiplier_tip,Multiplies the game's base crime value (0.0 to 10.0, default 2.0). STOLEN_VALUE_INT is a percentage, not a multiplier.
+cfg_stolen_multiplier_tip,Multiplies the game's base crime value. Type a number directly. Valid range 0.0 to 10.0, default 2.0. STOLEN_VALUE_INT is a percentage, not a multiplier.
 cfg_allow_stolen,allow selling stolen goods
 cfg_allow_stolen_tip,When disabled, stolen goods are kept and the reason is reported.
 cfg_allow_contraband,allow selling contraband
@@ -74,3 +75,5 @@ cfg_early_unlock,show purchase before owning the store
 cfg_early_unlock_tip,Off by default: the offer only appears after buying the store. This only affects this mod's entry.
 cfg_debug_grant,debug mode: grant a bin on new game
 cfg_debug_grant_tip,Off by default. Granted once per new game; loading a save never grants again; retried if inventory is full.
+upgrade_pending_recovered,The bin automatically rearranged itself and applied the pending {0}x{1} capacity.
+upgrade_pending_load,An older bin keeps its larger storage for now; opening it or sleeping will rearrange the items and apply the capacity for its current tier.

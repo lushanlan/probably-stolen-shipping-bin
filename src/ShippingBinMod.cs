@@ -40,6 +40,7 @@ namespace ShippingBin
 
             harmony = new Harmony(ModId);
             Purchase.Patch(harmony);
+            BinOpenHook.Patch(harmony);
         }
 
         public void OnDisable()

@@ -1,8 +1,8 @@
-# 出货箱 Mod 验收报告（候选构建，第 3 轮：记账单 + 任务物证据）
+# 出货箱 Mod 验收报告（候选构建，第 5 轮：末档 960、形状迁移安全、正视贴图接入）
 
 - 日期：2026-11-16
 - 构建：`build\package-dev`（候选开发包，**未做游戏内实机验收**）
-- 结论：规则层与游戏适配层已实现并通过游戏外全部可执行验证（**315** 条规则/事务/记账单/状态机测试 + 真实编译 + 本机 ModScanner 扫描 198 个方法）；游戏内行为（放置、开箱、拖拽升级、购买按钮、睡觉结算、存读档）尚未实机运行，见"未验证风险"。**本报告不声称玩法已在游戏内验证通过。**
+- 结论：规则层与游戏适配层已实现并通过游戏外全部可执行验证（**349** 条规则/事务/记账单/形状迁移/状态机测试 + 真实编译 + 本机 ModScanner 扫描 209 个方法）；游戏内行为（放置、开箱、拖拽升级、购买按钮、睡觉结算、存读档）尚未实机运行，见"未验证风险"。**本报告不声称玩法已在游戏内验证通过。**
 
 ## 0. 针对上一轮验收驳回的修复（5 条）
 
@@ -362,3 +362,266 @@ DLL 由 csc 编译，**哈希逐次不同**（非确定性编译，本表记录�
 4. `LockHelper.IsCurrentlyLocked` 的读档恢复顺序、危险水标签是否该整体拒收，均需实机确认。
 5. 账本恢复只做了"至多一次"与类型首次出现验证；`SecData` 无按类型读金额接口，无法做金额级幂等校验。
 6. 其余第 2 轮列出的实机项（贴图、开箱、拖拽升级、购买补丁、空间探测、前柜台、存读档）仍全部未验证。
+
+## 8. 第 4 轮：四档容量、购价 2000、倍率文本框、贴图接入（历史记录：该轮末档为 16×30/480，已被第 5 轮 32×30/960 覆盖）（2026-11-16）
+
+用户指令：m01486（购价 2000、按原版"储藏区"核实容量、倍率要能看到数字并可输入、调查贴图规范）与 m01489（四档定案：0 / 25 / 100 / 300 点，删 50 阈值，旧档不得缩容丢货）。本轮**只改源码/测试/文档**，未安装、未发布、未改 art 目录。
+
+### 8.1 四档容量与原版证据
+
+| 累计点数 | 名称 | 尺寸 | 格数 | 证据 |
+|---|---|---|---|---|
+| 0 | 储藏区 | 10×10 | 100 | 原版 `ShipSystemDirectory.StorageBay()` 完全一致 [IL 已证实] |
+| 25 | 储藏区（扩建） | 17×10 | 170 | 原版 `StorageBayLarge()` 完全一致 [IL 已证实] |
+| 100 | 两倍扩建储藏区 | 17×20 | 340 | 2×170 推导 [推导]：原版无此物品 |
+| 300 | 超科技储藏区 | 16×30 | 480 | 原版 `HyperTechBay()` 的单页尺寸 [IL 已证实]，原版共两页 960 |
+
+原版 `HyperTechBay()` 是"一个机器窗口 + 两页各 16×30"；本模组容器是单 `contentWindow` 单网格（存档按节点序号挂回子物品，运行期不能换结构），故取单页。原版 `StorageExpansionHelper.Expand` 只加页签不加格，并且会把扩建套件价值加到容器价值——本模组两件都不采用。
+
+详细证据、复现命令、以及原版其它储藏区（`MakeshiftStorageBay` 非矩形、枪械师/化学师 17×10、`MachineBay` 11×14、走私舱 5×5/8×8/3×3）见 [docs/il/capacity-and-config.md](il/capacity-and-config.md)。
+
+### 8.2 不缩容：旧存档数据保护
+
+旧版容量为 6×6→12×12（上限 30 点）。旧档可能已有 12×12 = 144 格且点数 < 25，而新档 0–24 点目标为 10×10 = 100 格。直接 `SetShape` 会让格内物品失去合法位置，读档时 `UncheckedAccept` 序号错位只 `Debug.LogWarning`（静默丢货）。
+
+实现：`Rules.ShouldApplyShape(curW, curH, newW, newH)` 只在目标格子数**严格更大**时返回 true；`BinItem.ApplySize` 先读当前尺寸再决定是否 `SetShape`。当前尺寸用 `grid.widthPixels / UISettings.current.gridSize` 反推（`gridSize = 16`，IL 已证实）；不用 `grid.inventoryShape`（`GridShape` 在本机 csc 下 `CS0570`）、也不用反射（会触发扫描器 `reflection-external`）。
+
+结果：旧 12×12 箱子保持 144 格，直到累计 25 点（170 > 144）才长到 17×10。跨档逻辑由 `tests/CoreTests.cs` 的 `ShouldApplyShape` 7 条用例覆盖。
+
+### 8.3 倍率设置：滑条改为原生数字输入
+
+根因（`ModConfigWindow.BuildEntry` IL）：只有 `IsNumber && HasRange` 才用 `AddSlider`，而滑条没有数值回显。没有范围的数值会走 `AddInput`，显示当前值、可直接输入，`Apply()` 时 `ReadWidget` 用 `float.TryParse(NumberStyles = 167, InvariantCulture)` 解析后 `ApplyBoxed`。
+
+改动：三个倍率（出售 0.8、赃物 2.0、违禁固定 1:1 不再可调）的 `config.Define` 传 `null, null`，UI 变为原生文本框；范围仍由 tooltip 文案 + `ModSettings.Snapshot()` 的 `Clamp` 保证；中英文 tooltip 均保留并写明"直接输入数字"与合法范围。
+
+### 8.4 本轮真实验证输出与哈希
+
+```text
+> pwsh -File .\build.ps1
+Built E:\SteamLibrary\steamapps\common\Probably Stolen\shipping-bin-mod\build\ShippingBin.dll
+
+> pwsh -File .\tools\test-rules.ps1
+[ok] Rules / Protection / Planner / Commit / Ledger / CommitLedger / GrantPolicy
+336 checks passed, 0 failed.
+All core rule tests passed (game integration NOT tested).
+PASS tools/test-rules.ps1 (game integration is NOT tested by this script)
+
+> pwsh -File .\package.ps1
+No packaging\Textures yet; bin uses the vanilla container sprite.
+Development package only: ...\build\package-dev
+
+> pwsh -File .\tools\scan.ps1
+Manifest ID=lushanlan.shipping_bin; Assemblies=ShippingBin.dll; Capabilities=
+Refused        : False
+MethodsScanned : 203
+Capabilities   : {}
+Findings       : {}
+HardFlags      : {}
+Pending        : {}
+```
+
+包内 4 文件哈希（`build\package-dev`）：
+
+| 文件 | 大小 | SHA256 |
+|---|---|---|
+| `manifest.xml` | 498 B | `08656A2A07004D0635F997EC447EB8E9DC7AD618992F35F5F5F3FE7005D077EB` |
+| `ShippingBin.dll` | 59,392 B | `02BEADA2A3DF0882EB3DCC14169BFE762F54935849EF5F0BE495F7FFDDBC115C` |
+| `Localization\en.csv` | 5,526 B | `0816F62C33EC1620CF814A6032018007955FD444DC9E6AF528421E8EB46CCA23` |
+| `Localization\zh.csv` | 5,100 B | `D03A907E14FA6A45526291FAF02F41ED0F9F1CCE62E0E082A3D4217079E5B77A` |
+
+`csc.exe` 无确定性编译：重新构建会使 DLL 哈希变化，manifest 与 csv 哈希稳定。
+
+### 8.5 本轮改动文件
+
+- 修改：`src/Core/Rules.cs`（购价 2000、四档常量、`CapacityWidthFor/HeightFor/CellsFor`、`ShouldApplyShape`、`UpgradeOutcome` 增宽高字段）、`src/Game/BinItem.cs`（尺寸应用、像素反推、模组贴图优先）、`src/Game/ModSettings.cs`（倍率去范围）、`src/Game/ModIds.cs`（`BinSpriteKey`）、`tests/CoreTests.cs`（336 条）、`packaging/Localization/zh.csv`、`packaging/Localization/en.csv`、`package.ps1`（复制 `packaging\Textures`）、`README.md`、`docs/decisions-shipping-bin.md`、`docs/acceptance.md`、`docs/game-test-checklist.md`。
+- 新增：`docs/il/capacity-and-config.md`、`docs/art-spec.md`。
+- 未改：`build.ps1` 文件清单（本次无新源文件）、`packaging/manifest.xml`、`art` 目录（不存在）。
+
+### 8.6 本轮可交给用户实机测试的范围
+
+1. 升级四档：新箱初始 10×10；累计 25 点变 17×10；100 点变 17×20；300 点变 16×30 且再拖材料提示已满级。
+2. 旧档不缩容：载入第 3 轮存档里有 12×12 箱子的局，确认箱子仍是 12×12、箱内物品完整；累计到 25 点后变 17×10。
+3. 购价：王尔德恩惠界面显示的基础价应为 2000（若装了影响 `upgradePriceMultiplier` 的 Perk 会按原版折扣变化），购买后冷却一天。
+4. 倍率设置：设置界面里三个倍率应是**可输入数字的文本框**，打开即显示当前值（0.8 / 2.0），输入新值后生效；输入非法字符不会提交。
+5. 贴图回退：当前包没有 `Textures`，进游戏后箱子用原版容器图；F8 日志不应出现 `Mod sprite ... not found`。
+6. 出图后接入：把图放到 `packaging\Textures\Items\shipping_bin.png`（32×32 推荐），重跑 `package.ps1`，日志出现 `Included mod textures`，进游戏后箱子换成新图。
+
+### 8.7 本轮未解决 / 需实机确认
+
+1. 16×30 单页（480 格）在出货箱窗口里的实际显示与操作手感。
+2. 17×20（340 格）是推导档位，平衡性需实机判断。
+3. 旧档 12×12 容器保持 144 格、与新档同点数不同尺寸，是**有意的数据保护**，不做迁移。
+4. 倍率文本框：原版非法输入不提交；越界值被 `Snapshot()` clamp，但配置文件里保留玩家原值。
+5. `UISettings.gridSize` 若被其他 mod 改动，尺寸反推随之变化（读运行时值，未硬编码 16）。
+6. 此前各轮的实机项（放置/开箱/拖拽升级/购买补丁/空间探测/前柜台救援/存读档往返/记账恢复）仍全部未验证。
+
+## 9. 第 5 轮：末档 960、形状迁移安全、正视贴图接入（2026-11-16）
+
+### 9.1 末档 960（用户定案，不再给 480）
+
+- 原版 `ShipSystemDirectory.HyperTechBay()`：一个机器窗口内两页，每页 `new GameGridInventory(16,30)` = 480，合计 **960**（IL 已证实，见 `docs/il/capacity-and-config.md` §2/§9）。
+- 本模组容器只有一个 `contentWindow` + 单个 `GameGridInventory`：原版存档按“物品 + 非物品节点 BFS 序号”挂回子物品，运行期改结构会让序号错位、解码只 `Debug.LogWarning` 并静默丢货（`docs/il/persistence.md`）。多页还需 `MachineryTabs`/`MachineryContainer`，原版只用于机器窗口，没有可移动多页容器先例，页签选择持久化也未实机验证。
+- 因此末档实现为 **单页 32×30 = 960 格**，与 960 等容但结构仍是单网格。
+- **UI 限制（必须实机确认）**：内容区宽 `32 × 16px = 512px`，低分辨率或 UI 缩放下可能超出屏幕，且没有滚动条；原版两页每页宽 256px。
+
+### 9.2 形状迁移安全（旧档不丢货）
+
+- 只比较面积不够：12×12(144) → 17×10(170) 面积更大，但高度变矮，原本在 y=10/11 的物品会越界；`GameGridInventory.SetShape` 只重算像素与背景，不检查物品位置（IL 已证实）。
+- 新增纯规则 `src/Core/ShapeMigration.cs`：`Decide(curW, curH, tgtW, tgtH)`
+  - 目标非法 → `KeepCurrent`；当前尺寸未知 → `ApplyDirect`；尺寸相同 → `None`；
+  - 目标宽高都不小于当前（真超集）→ `ApplyDirect`（任何物品都不可能越界）；
+  - 目标面积更小 → `KeepCurrent`（绝不缩容）；
+  - 其余（变宽变矮）→ `Relocate`。
+- `BinItem.ApplySize(bin, allowRelocation)`：升级路径传 `true`，执行 取出全部 → `SetShape` → 逐件 `GraphUtils.TryAcceptAll(grid, item, -1)` 放回 → 全部成功才写形状 tag；任一件放不回则撤回、恢复原形状、原样放回，并提示 `upgrade_pending_space`（点数已保留，腾出空间后再拖材料）。读档路径 `onLoaded` 传 `false`，绝不静默重排玩家摆放。
+- 实际生效形状写入 `TagShapeApplied = 宽 × 1000 + 高`，便于跨版本审计。
+
+### 9.3 正视贴图接入
+
+- 素材：`art/wooden-shipping-bin-front.png`（1024×1024，正视图，用户 API 生成并目视确认；旧轴测图 `art/wooden-shipping-bin.png` 未使用，`art/` 目录未被修改）。
+- 处理（System.Drawing，非重绘）：裁 alpha bbox（134..889 × 169..872 = 756×704）→ 等比缩放进 32×32（内容 32×30，偏移 (0,1)）→ 预乘 alpha 盒式降采样（`sum(rgb*a)/sum(a)`，消除暗边）→ 边缘清理（`alpha < 40` 全透明、`alpha >= 110` 置 255）。
+- 校验：四格中心 (8,8)/(24,8)/(8,24)/(24,24) alpha 全 255 → 2×2 占格；产物 `packaging/Textures/Items/shipping_bin.png`（32×32，2,553 B）。
+- 运行时：`BinItem.TryApplyModSprite` 在 `ModLoader.Mods` 里找到本 mod 且 `Sprites` 含 `shipping_bin` 时调用 `SetSpriteAndShapeFromMod`（按非透明像素推导占格），否则回退原版 `Items/items_container::eleanor_box`；`package.ps1` 复制 `packaging/Textures` 并打印 `Included mod textures`。
+
+### 9.4 本轮真实验证输出与哈希
+
+```text
+> pwsh -File .\build.ps1
+Built E:\SteamLibrary\steamapps\common\Probably Stolen\shipping-bin-mod\build\ShippingBin.dll
+
+> pwsh -File .\tools\test-rules.ps1
+[ok]   Rules
+[ok]   Protection
+[ok]   Planner
+[ok]   Commit
+[ok]   Ledger
+[ok]   CommitLedger
+[ok]   GrantPolicy
+[ok]   ShapeMigration
+
+349 checks passed, 0 failed.
+All core rule tests passed (game integration NOT tested).
+PASS tools/test-rules.ps1 (game integration is NOT tested by this script)
+
+> pwsh -File .\package.ps1
+Included mod textures: ...\shipping-bin-mod\packaging\Textures
+Development package only: ...\build\package-dev
+
+> pwsh -File .\tools\scan.ps1
+Manifest ID=lushanlan.shipping_bin; Assemblies=ShippingBin.dll; Capabilities=
+Refused        : False
+MethodsScanned : 209
+Capabilities   : {}
+Findings       : {}
+HardFlags      : {}
+Pending        : {}
+```
+
+包内 5 文件哈希（`build\package-dev`）：
+
+| 文件 | 大小 | SHA256 |
+|---|---|---|
+| `manifest.xml` | 498 B | `08656A2A07004D0635F997EC447EB8E9DC7AD618992F35F5F5F3FE7005D077EB` |
+| `ShippingBin.dll` | 61,952 B | `BB0EE0626D1EAF9CEE6F9D1CD0A286F28599A3DBE01F68D39ABD6F19BA3F2157` |
+| `Localization\en.csv` | 5,686 B | `8092DFCBEE6441C7C613BFF61C9A8C69E7D4AD70C8955745F2ECFC37AA0DF740` |
+| `Localization\zh.csv` | 5,261 B | `A8D5FBCAD2FC2645EE860A2FB31AC65F249AB4FE16B65EA99A24BE61303902AF` |
+| `Textures\Items\shipping_bin.png` | 2,553 B | `C028624A3FB0BB8C0925A18A7FD7579A3A28FD12145EAA75B9ED1061183FB817` |
+
+`csc.exe` 无确定性编译：重新构建会使 DLL 哈希变化，manifest 与 csv/png 哈希稳定。
+
+### 9.5 本轮改动文件
+
+- 新增：`src/Core/ShapeMigration.cs`（形状迁移纯规则）、`packaging/Textures/Items/shipping_bin.png`（正视 32×32 贴图）。
+- 修改：`src/Core/Rules.cs`（`MaxCapacityWidth = 32`、末档 `32×30`、注释改为 960/UI 限制）、`src/Game/BinItem.cs`（`ApplySize(bin, allowRelocation)`、重排与回滚、`TagShapeApplied`、`upgrade_pending_space`、`onLoaded` 不重排）、`src/Game/ModIds.cs`（`TagShapeApplied`）、`build.ps1`（加入 `ShapeMigration.cs`，共 18 个源文件）、`tests/CoreTests.cs`（349 条）、`packaging/Localization/{zh,en}.csv`（`item_description` 改为 32×30/960、新增 `upgrade_pending_space`）、`README.md`、`docs/decisions-shipping-bin.md`、`docs/acceptance.md`、`docs/game-test-checklist.md`、`docs/il/capacity-and-config.md`、`docs/art-spec.md`。
+- 未改：`packaging/manifest.xml`、`package.ps1`（第 4 轮已支持复制 `packaging\Textures`）、`art/` 目录。
+
+### 9.6 本轮可交给用户实机测试的范围
+
+1. 末档 960：累计 300 点后箱子应为 **32×30**；确认内容窗口在常用分辨率下是否完整可见、能否操作（预期无滚动条）。
+2. 形状迁移：用第 3 轮 12×12 旧档（点数 < 25），累计到 25 点时升到 17×10，确认物品数量不变；若先塞满再升级，放不下时应提示“腾出空间”、箱子保持原状、材料消耗但点数保留。
+3. 贴图：本包已含 `Textures\Items\shipping_bin.png`，进游戏确认箱子为木箱**正视图**、占 2×2 格、无黑边/暗边。
+4. 四档 + 购价 2000 + 倍率文本框：同第 4 轮清单。
+5. 读档：升到 32×30 后存读档，确认尺寸与箱内物品保持、读档不重排。
+
+### 9.7 本轮未解决 / 需实机确认
+
+1. **32×30 单页的 UI 显示与操作（内容区宽 512px）——必须实机确认**；若不可接受，需要改造为多页容器（会牵动存档结构，需另行设计）。
+2. 原版是“两页 16×30”，本实现是“单页 32×30 等容”，交互形态与原版不完全一致。
+3. 重排逻辑规则层已测；游戏中 `Expel`/`TryAcceptAll` 的真实重排结果与失败回滚需实机（含“塞满后升级”的极端用例）。
+4. 贴图 alpha 清理阈值（40/110）是针对当前素材调的；换素材需重新检查边缘与四格中心。
+5. 旧档 12×12 在点数 < 25 时保持 12×12（不缩容），与新档同点数不同尺寸，属**有意的数据保护**。
+6. 此前各轮的实机项（放置/开箱/拖拽升级/购买补丁/空间探测/前柜台救援/存读档往返/记账恢复）仍全部未验证。
+## 10. 第 6 轮：待扩容恢复、读档解码顺序、4×4 本体贴图（2026-11-16）
+
+### 10.1 修复“满级后永远无法重试”
+- 问题：旧实现在 `DoUpgrade` 中先 `ConsumeUpgradeMaterial` + `SetPoints`，再 `ApplySize`；形状迁移失败只提示“再拖材料”，而 `CanUpgrade` 在点数达到 300 时直接拒绝 ⇒ 材料已消耗、点数已满、容量却没落地，且无法再次触发。
+- 现实现（`src\Game\BinItem.cs`）：
+  - 迁移失败时把目标尺寸写入物品 tag `lushanlan.shipping_bin.pending_shape`（编码 `宽*1000+高`），**不再需要额外材料**；
+  - `CanUpgrade` 改为 `点数满 但有待扩容` 时仍允许拖材料触发；
+  - `DoUpgrade` 一进来先做一次“零消耗重试” `TryApplyPendingSize`，成功则清除标记；若此时已满级，只提示满级；
+  - 重试时机：打开箱子（Harmony prefix `ItemMouseDoubleClickHandler.OpenContentAction`）、睡觉（`NightSettlement.Run` 结算前）。
+- 重试逻辑：`RelocateIntoShape` 把箱内物品全部 `Expel` → `SetShape(目标)` → 逐件 `GraphUtils.TryAcceptAll` 校验 → 全部成功才写新形状；任一件放不回则恢复原形状、按原顺序放回、保留待扩容标记。
+
+### 10.2 读档解码顺序与旧档丢物风险（IL 已证实）
+- `SaveItemNode` **不保存** inventory 形状（字段只有物品自身的 `itemShape/itemModifiedShape` 等），容器形状完全由工厂重建。
+- `SaveManager.DecodeNodesInternal`：第一遍 `DirectoryMaster.Item(identifier, true)` 走工厂建物品；第二遍按非物品节点 BFS 序号 `nodeDict[invIdx].UncheckedAccept(child)` 挂回子物品（失败只 `Debug.LogWarning`）。整个过程**不调用 `onLoaded`、不校验形状**。
+- `PlayerStore.LoadGame` 对每个顶层根调 `DecodeSaveItem`，`onLoaded` 在子物品挂回之后才触发。
+- 因此工厂改为一律建 **32×30 最大画布**：旧存档里任何 ≤32×30 的保存坐标都不会在挂回瞬间越界；新箱子再由 `PrepareFresh` 收窄到 10×10。
+- 旧档（没有 `TagShapeApplied` 记录）在 `OnLoaded` 中**绝不直接缩小**：保留 32×30，写入 `pending_shape` 与 `TagShapeApplied`，提示“开箱或睡觉时自动整理”，等安全时机再迁移。新档读档时恢复上次实际应用的形状。
+
+### 10.3 本体占格 4×4 与旧存档兼容
+- 新箱子本体：`packaging\Textures\Items\shipping_bin_v2.png`，64×64（16px/格），16 个格中心 alpha=255 ⇒ `SetSpriteAndShapeFromMod` 推导出完整 **4×4** 占格。
+- 旧存档兼容：第 5 轮构建曾把 sprite key `shipping_bin` 写进存档（32×32 = 2×2）。因此保留 `shipping_bin.png`（32×32）作为 legacy key，并让 `OnLoaded` 依据存档里的 `spriteAtlasPath/spritePath` 恢复对应贴图：
+  - `shipping_bin_v2` → 4×4；
+  - `shipping_bin` → 2×2（旧物品保持原占格，避免把 4×4 贴图套到 2×2 物品上与背包邻居重叠）；
+  - 无 mod 贴图信息 → 回退原版 `Items/items_container::eleanor_box`。
+- 存档只保存 `spriteAtlasPath/spritePath`，**不保存 `useSpriteFromMod`**，所以读档必须重新调用 `SetSpriteAndShapeFromMod`，否则贴图解析会走原版图集并显示 unknown（`ResolveSpriteByName` IL 已证实）。
+
+### 10.4 真实验证（本机执行）
+```text
+> pwsh -File .\build.ps1
+Built ...\build\ShippingBin.dll
+
+> pwsh -File .\tools\test-rules.ps1
+[ok] Rules / Protection / Planner / Commit / Ledger / CommitLedger / GrantPolicy / ShapeMigration
+363 checks passed, 0 failed.
+PASS tools/test-rules.ps1 (game integration is NOT tested by this script)
+
+> pwsh -File .\package.ps1
+Included mod textures: ...\packaging\Textures
+Development package only: ...\build\package-dev
+
+> pwsh -File .\tools\scan.ps1
+Manifest ID=lushanlan.shipping_bin; Assemblies=ShippingBin.dll; Capabilities=
+Refused        : False
+MethodsScanned : 220
+Capabilities / Findings / HardFlags / Pending : {}
+```
+
+### 10.5 本轮包哈希（`build\package-dev`）
+| 文件 | 字节 | SHA-256 |
+| --- | --- | --- |
+| `manifest.xml` | 498 | `08656A2A07004D0635F997EC447EB8E9DC7AD618992F35F5F5F3FE7005D077EB` |
+| `ShippingBin.dll` | 65,536 | `02F40C4FE1822EFD1005BE7CA33A03831A9A680D00FF4E0E166F106C3C6A2B0B` |
+| `Localization\zh.csv` | 5,512 | `EBB22479F713966818F3BBCE04E3E9D78CD4CD25290C43C1C29FA1C52E66C276` |
+| `Localization\en.csv` | 6,008 | `265298FE11305BFADC5D0C509A912C680D269FCA3D42A714D26DB64076D133A3` |
+| `Textures\Items\shipping_bin_v2.png` | 9,608 | `9749E6C3F3434395D960F51A6B718697F6C39E844BD04FF809ADE7E5FBDB03C5` |
+| `Textures\Items\shipping_bin.png` | 2,749 | `B3FF2B16C582429F1C256C649015AE0986F3226348D748538745BAB543AC6B33` |
+
+DLL 由 csc 非确定性编译，每次重建哈希都会变；manifest 与本地化/贴图哈希稳定。
+
+### 10.6 本轮改动文件
+- 新增：`src\Game\BinOpenHook.cs`（开箱时重试待扩容）、`packaging\Textures\Items\shipping_bin_v2.png`（64×64）。
+- 修改：`src\Core\ShapeMigration.cs`（新增 `TryDecodeShape`）、`src\Game\BinItem.cs`（最大画布工厂、`PrepareFresh`、`OnLoaded` 恢复形状/贴图、pending 读写与重试、`CanUpgrade`/`DoUpgrade`）、`src\Game\ModIds.cs`（`TagPendingShape`、`BinSpriteKey=shipping_bin_v2`、`LegacyBinSpriteKey`）、`src\Game\NightSettlement.cs`（结算前重试）、`src\ShippingBinMod.cs`（安装开箱补丁）、`build.ps1`（新增源文件）、`packaging\Localization\{zh,en}.csv`（+2 键、修订 1 键）、`tests\CoreTests.cs`（+14 断言）。`packaging\Textures\Items\shipping_bin.png` 改为 legacy 32×32。
+
+### 10.7 需要实机验证（第 6 轮新增）
+1. 新开一局（调试赠送或购买）得到箱子：确认背包里实物占 **4×4** 格、正视木箱外观、可放置 / 可打开。
+2. 旧存档（第 5 轮构建的箱子）：确认读档后箱子仍显示原 2×2 外观、**周围物品没有被挤掉或吞掉**；打开一次箱子确认内部物品位置不变。
+3. 满级场景：把点数升到 300 且箱内布局放不下 → 拖材料 → 应出现“已记下待扩容、不再消耗材料”；腾出空间后开箱/睡觉应出现“已自动整理并应用”的夜报。
+4. 旧档 12×12 → 17×10 迁移：读档后先保留 32×30 并提示；开箱或睡觉后应整理为 17×10，物品数量与种类不变。
+5. 存读档往返：升级到 960 后存读档，容量保持 32×30、贴图不变成 unknown。
+
+### 10.8 未解边界
+- 旧 2×2 箱子不会自动升级为 4×4：无法在不与背包邻居碰撞的前提下静态验证 4×4 是否可放，故保留原占格。若需要旧箱变 4×4，需实机确认后另做迁移（例如取出到空背包再重放）。
+- 16×30/32×30 的窗口在低分辨率下的可读性仍未实机验证；`PixelWindow` 无滚动。
+- `GridShape` 在本机 csc 中是 unsupported type，无法做逐格碰撞判定；迁移完全依赖“取出—重塑—逐件放回”的真实 API 行为。
+- 打开箱子的 Harmony prefix 只在 `ItemMouseDoubleClickHandler.OpenContentAction` 上；若某条路径绕过它（例如脚本直接 Show），待扩容会推迟到睡觉。

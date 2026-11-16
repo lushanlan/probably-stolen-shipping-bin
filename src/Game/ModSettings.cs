@@ -18,13 +18,18 @@ namespace ShippingBin
         {
             ModConfig config = ModHelper.GetConfig(modId);
 
+            // 倍率刻意不给 min/max：原版 ModConfigWindow.BuildEntry 只有“带范围”的
+            // 数值配置才用滑条（AddSlider，且没有数值回显），不带范围的数值配置走
+            // 原生文本框 AddInput（显示当前值、可直接输入数字，Apply 时按
+            // InvariantCulture 解析并 ApplyBoxed 提交）。这样既能看到当前数值，
+            // 又能直接输入；合法范围由 tooltip 文案 + Snapshot() 的 Clamp 保证。
             SaleMultiplier = config.Define(
                 ModIds.ConfigPrefix + "sale_multiplier",
                 (float)Rules.DefaultSaleMultiplier,
                 "出货箱",
                 delegate { return Loc.Get("cfg_sale_multiplier"); },
-                (float)Rules.MinSaleMultiplier,
-                (float)Rules.MaxSaleMultiplier,
+                null,
+                null,
                 delegate { return Loc.Get("cfg_sale_multiplier_tip"); },
                 false);
 
@@ -33,8 +38,8 @@ namespace ShippingBin
                 (float)Rules.DefaultStolenMultiplier,
                 "涉案",
                 delegate { return Loc.Get("cfg_stolen_multiplier"); },
-                (float)Rules.MinStolenMultiplier,
-                (float)Rules.MaxStolenMultiplier,
+                null,
+                null,
                 delegate { return Loc.Get("cfg_stolen_multiplier_tip"); },
                 false);
 

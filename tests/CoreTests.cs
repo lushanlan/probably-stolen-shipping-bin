@@ -21,6 +21,7 @@ public static class CoreTests
         Run("Ledger", TestLedger);
         Run("CommitLedger", TestCommitLedger);
         Run("GrantPolicy", TestGrantPolicy);
+        Run("ShapeMigration", TestShapeMigration);
         Console.WriteLine();
         Console.WriteLine(passed + " checks passed, " + failed + " failed.");
         if (failed > 0)
@@ -156,31 +157,57 @@ public static class CoreTests
         Eq(20, Rules.MislabelPenalty(2500, true), "mislabel cap");
         Eq(20, Rules.MislabelPenalty(99999, true), "mislabel cap 2");
 
-        Eq(6, Rules.CapacitySizeFor(0), "cap 0");
-        Eq(6, Rules.CapacitySizeFor(4), "cap 4");
-        Eq(8, Rules.CapacitySizeFor(5), "cap 5");
-        Eq(8, Rules.CapacitySizeFor(14), "cap 14");
-        Eq(10, Rules.CapacitySizeFor(15), "cap 15");
-        Eq(10, Rules.CapacitySizeFor(29), "cap 29");
-        Eq(12, Rules.CapacitySizeFor(30), "cap 30");
-        Eq(12, Rules.CapacitySizeFor(999), "cap 999");
-        Check(Rules.CapacitySizeFor(30) * Rules.CapacitySizeFor(30) > 9 * 8, "max capacity clearly larger than 8x9 native");
-        Check(Rules.CapacitySizeFor(30) * Rules.CapacitySizeFor(30) > 7 * 11, "max capacity clearly larger than 7x11 native");
+        // 四档容量：名称对应原版储藏区系列，尺寸取自本机 IL。
+        //   0 / 25 / 100 / 300 点 -> 10x10(100) / 17x10(170) / 17x20(340) / 32x30(960)
+        Eq(10, Rules.CapacityWidthFor(0), "cap w 0");
+        Eq(10, Rules.CapacityHeightFor(0), "cap h 0");
+        Eq(100, Rules.CapacityCellsFor(0), "cap cells 0");
+        Eq(100, Rules.CapacityCellsFor(24), "cap cells 24");
+        Eq(17, Rules.CapacityWidthFor(25), "cap w 25");
+        Eq(10, Rules.CapacityHeightFor(25), "cap h 25");
+        Eq(170, Rules.CapacityCellsFor(25), "cap cells 25 = vanilla large storage bay");
+        Eq(170, Rules.CapacityCellsFor(99), "cap cells 99");
+        Eq(17, Rules.CapacityWidthFor(100), "cap w 100");
+        Eq(20, Rules.CapacityHeightFor(100), "cap h 100");
+        Eq(340, Rules.CapacityCellsFor(100), "cap cells 100 = double expansion");
+        Eq(340, Rules.CapacityCellsFor(299), "cap cells 299");
+        Eq(32, Rules.CapacityWidthFor(300), "cap w 300");
+        Eq(30, Rules.CapacityHeightFor(300), "cap h 300");
+        Eq(960, Rules.CapacityCellsFor(300), "cap cells 300 = hypertech total (32x30 single page)");
+        Eq(960, Rules.CapacityCellsFor(999), "cap cells above max");
+        Eq(0, Rules.CapacityLevelFor(0), "cap level 0");
+        Eq(0, Rules.CapacityLevelFor(24), "cap level 24");
+        Eq(1, Rules.CapacityLevelFor(25), "cap level 25");
+        Eq(2, Rules.CapacityLevelFor(100), "cap level 100");
+        Eq(3, Rules.CapacityLevelFor(300), "cap level 300");
+        Check(Rules.CapacityCellsFor(300) > 17 * 10, "max capacity clearly larger than vanilla large storage bay");
+        Check(Rules.CapacityCellsFor(300) > 7 * 11, "max capacity clearly larger than 7x11 native backpack");
+
+        // 只增不减：旧存档里更大的容器不能因为档位回退被缩容（否则丢货）。
+        Check(Rules.ShouldApplyShape(10, 10, 10, 10) == false, "shape equal not applied");
+        Check(Rules.ShouldApplyShape(12, 12, 10, 10) == false, "legacy bigger bin never shrinks");
+        Check(Rules.ShouldApplyShape(10, 10, 17, 10) == true, "shape growth applied");
+        Check(Rules.ShouldApplyShape(17, 10, 17, 20) == true, "shape growth to double applied");
+        Check(Rules.ShouldApplyShape(17, 20, 32, 30) == true, "shape growth to hypertech applied");
+        Check(Rules.ShouldApplyShape(32, 30, 32, 30) == false, "max shape not re-applied");
+        Check(Rules.ShouldApplyShape(0, 0, 10, 10) == true, "unknown shape applies");
 
         UpgradeOutcome o = Rules.ApplyUpgradePoints(0, 1);
-        Check(o.Accepted && o.NewPoints == 1 && o.NewSize == 6 && o.Overflow == 0, "upgrade junk from 0");
-        o = Rules.ApplyUpgradePoints(4, 1);
-        Check(o.Accepted && o.NewPoints == 5 && o.NewSize == 8, "upgrade cross 5");
-        o = Rules.ApplyUpgradePoints(14, 1);
-        Check(o.NewPoints == 15 && o.NewSize == 10, "upgrade cross 15");
-        o = Rules.ApplyUpgradePoints(29, 5);
-        Check(o.Accepted && o.NewPoints == 30 && o.NewSize == 12 && o.Overflow == 4, "upgrade exact cap absorbs overflow");
-        o = Rules.ApplyUpgradePoints(28, 5);
-        Check(o.Accepted && o.NewPoints == 30 && o.NewSize == 12 && o.Overflow == 3, "upgrade overflow absorbed");
-        o = Rules.ApplyUpgradePoints(30, 5);
-        Check(!o.Accepted && o.AtMaxBefore && o.NewPoints == 30 && o.Overflow == 0, "upgrade rejected at max");
+        Check(o.Accepted && o.NewPoints == 1 && o.NewWidth == 10 && o.NewHeight == 10 && o.NewSize == 100 && o.Overflow == 0, "upgrade junk from 0");
+        o = Rules.ApplyUpgradePoints(24, 1);
+        Check(o.Accepted && o.NewPoints == 25 && o.NewWidth == 17 && o.NewHeight == 10 && o.NewSize == 170, "upgrade cross 25");
+        o = Rules.ApplyUpgradePoints(99, 1);
+        Check(o.NewPoints == 100 && o.NewWidth == 17 && o.NewHeight == 20 && o.NewSize == 340, "upgrade cross 100");
+        o = Rules.ApplyUpgradePoints(299, 5);
+        Check(o.Accepted && o.NewPoints == 300 && o.NewWidth == 32 && o.NewHeight == 30 && o.NewSize == 960 && o.Overflow == 4, "upgrade exact cap absorbs overflow");
+        o = Rules.ApplyUpgradePoints(298, 5);
+        Check(o.Accepted && o.NewPoints == 300 && o.NewSize == 960 && o.Overflow == 3, "upgrade overflow absorbed");
+        o = Rules.ApplyUpgradePoints(300, 5);
+        Check(!o.Accepted && o.AtMaxBefore && o.NewPoints == 300 && o.Overflow == 0, "upgrade rejected at max");
         o = Rules.ApplyUpgradePoints(0, 0);
         Check(!o.Accepted, "upgrade non material rejected");
+
+        Eq(2000, Rules.PurchasePrice, "purchase price 2000");
 
         Check(Rules.CanPurchaseToday(10, 10) == false, "purchase same day blocked");
         Check(Rules.CanPurchaseToday(10, 9) == true, "purchase next day allowed");
@@ -982,5 +1009,55 @@ public static class CoreTests
         Check(!partial.Settled, "partial pay failure does not settle");
         Check(partialWorld.Returned.Contains("item_b"), "unpaid item returned to bin");
         Eq(0, partialWorld.Crime, "no whole-plan crime after partial pay");
-    }
+        }
+
+        // =====================================================================
+        // 形状迁移策略（12x12 -> 17x10 这类"变宽变矮"必须重排）
+        // =====================================================================
+        private static void TestShapeMigration()
+        {
+            Check(ShapeMigration.Decide(12, 12, 10, 10) == ShapeAction.KeepCurrent, "relocation rejects shrink 12x12 to 10x10");
+            Check(ShapeMigration.Decide(10, 10, 10, 10) == ShapeAction.None, "same size needs nothing");
+            Check(ShapeMigration.Decide(0, 0, 10, 10) == ShapeAction.ApplyDirect, "unknown current shape applies directly");
+            Check(ShapeMigration.Decide(10, 10, 0, 10) == ShapeAction.KeepCurrent, "invalid target keeps current");
+            Check(ShapeMigration.Decide(10, 10, 17, 10) == ShapeAction.ApplyDirect, "wider superset applies directly");
+            Check(ShapeMigration.Decide(17, 10, 17, 20) == ShapeAction.ApplyDirect, "taller superset applies directly");
+            Check(ShapeMigration.Decide(17, 20, 32, 30) == ShapeAction.ApplyDirect, "hypertech superset applies directly");
+            Check(ShapeMigration.Decide(12, 12, 17, 10) == ShapeAction.Relocate, "legacy 12x12 to 17x10 must relocate");
+            Check(ShapeMigration.Decide(12, 12, 32, 30) == ShapeAction.ApplyDirect, "legacy 12x12 to 32x30 is a superset");
+            Check(ShapeMigration.Decide(17, 20, 17, 10) == ShapeAction.KeepCurrent, "height shrink with smaller area keeps current");
+            Check(ShapeMigration.Decide(10, 10, 12, 12) == ShapeAction.ApplyDirect, "grow both directions applies directly");
+            Check(ShapeMigration.EncodeShape(32, 30) == 32030, "shape code 32x30");
+            Check(ShapeMigration.EncodeShape(0, 0) == 0, "shape code invalid is zero");
+
+            // TryDecodeShape：读出"上次实际形状"或"待扩容目标"。
+            int decodedWidth;
+            int decodedHeight;
+            Check(ShapeMigration.TryDecodeShape(32030, out decodedWidth, out decodedHeight)
+                && decodedWidth == 32 && decodedHeight == 30, "decode 32x30");
+            Check(ShapeMigration.TryDecodeShape(17010, out decodedWidth, out decodedHeight)
+                && decodedWidth == 17 && decodedHeight == 10, "decode 17x10");
+            Check(ShapeMigration.TryDecodeShape(10010, out decodedWidth, out decodedHeight)
+                && decodedWidth == 10 && decodedHeight == 10, "decode 10x10");
+            Check(!ShapeMigration.TryDecodeShape(0, out decodedWidth, out decodedHeight), "decode zero fails");
+            Check(!ShapeMigration.TryDecodeShape(-1, out decodedWidth, out decodedHeight), "decode negative fails");
+            Check(!ShapeMigration.TryDecodeShape(1000000, out decodedWidth, out decodedHeight), "decode out-of-range fails");
+            Check(!ShapeMigration.TryDecodeShape(12000, out decodedWidth, out decodedHeight), "decode zero height fails");
+
+            // DecideOnLoad：读档时能不能直接把工厂形状换成点数目标。
+            Check(ShapeMigration.DecideOnLoad(32, 30, 32, 30, false) == LoadShapeAction.None,
+                "load: same size needs nothing");
+            Check(ShapeMigration.DecideOnLoad(32, 30, 17, 10, false) == LoadShapeAction.KeepAndMarkPending,
+                "load: legacy max canvas must keep and mark pending");
+            Check(ShapeMigration.DecideOnLoad(0, 0, 17, 10, false) == LoadShapeAction.ApplyTarget,
+                "load: unknown current applies target");
+            Check(ShapeMigration.DecideOnLoad(32, 30, 0, 30, false) == LoadShapeAction.None,
+                "load: invalid target does nothing");
+            Check(ShapeMigration.DecideOnLoad(10, 10, 17, 20, false) == LoadShapeAction.ApplyTarget,
+                "load: superset target applies");
+            Check(ShapeMigration.DecideOnLoad(12, 12, 17, 10, true) == LoadShapeAction.ApplyTarget,
+                "load: verified fit applies target");
+            Check(ShapeMigration.DecideOnLoad(12, 12, 17, 10, false) == LoadShapeAction.KeepAndMarkPending,
+                "load: unverified non-superset keeps pending");
+        }
 }

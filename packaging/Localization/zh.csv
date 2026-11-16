@@ -1,5 +1,5 @@
 item_name,出货箱
-item_description,睡觉时会统一出售箱内合法货物的容器。放进去的东西睡前还可以取回。
+item_description,睡觉时会统一出售箱内合法货物的容器。放进去的东西睡前还可以取回。初始容量 10x10；累计 25 点升级为 17x10，100 点为 17x20，300 点为 32x30（共 960 格，单页显示）。
 purchase_title,出货箱
 purchase_description,购买一个出货箱，每天限购一次。
 purchase_subtitle,购买出货箱
@@ -10,8 +10,9 @@ purchase_no_space,背包空间不足，无法购买出货箱。
 debug_grant_ok,调试模式：已赠送一个出货箱。
 debug_grant_pending,调试模式：背包空间不足，出货箱将在之后自动补发。
 upgrade_max,这个出货箱已经升到满级了。
-upgrade_ok,出货箱容量提升到 {0}x{0}。
+upgrade_ok,出货箱容量提升到 {0}x{1}。
 upgrade_overflow,出货箱已满级，多出的 {0} 点升级进度无法继续使用（上限 {1}）。
+upgrade_pending_space,箱子里的物品布局暂时放不下新的容量，已经记下待扩容，不会再消耗材料；开箱或睡觉时会自动重试。
 log_sold,出货箱：卖出 {0} 件，收入 {1}。
 log_retained,出货箱：保留 {0} 件未出售。
 log_retained_reason,未出售：{0} —— {1}
@@ -59,9 +60,9 @@ crime_weapon_trafficking,武器
 crime_card_trafficking,证件
 crime_contraband_trafficking,违禁品
 cfg_sale_multiplier,出售倍率
-cfg_sale_multiplier_tip,按物品当前状态显示的估值乘以该倍率（0.0 到 5.0，默认 0.8）。
+cfg_sale_multiplier_tip,按物品当前状态显示的估值乘以该倍率；直接输入数字，合法范围 0.0 到 5.0，默认 0.8。
 cfg_stolen_multiplier,赃物涉案倍率
-cfg_stolen_multiplier_tip,以原版基础涉案金额为基准（0.0 到 10.0，默认 2.0）。原版 STOLEN_VALUE_INT 是百分比，不是倍率。
+cfg_stolen_multiplier_tip,以原版基础涉案金额为基准；直接输入数字，合法范围 0.0 到 10.0，默认 2.0。原版 STOLEN_VALUE_INT 是百分比，不是倍率。
 cfg_allow_stolen,允许出售赃物
 cfg_allow_stolen_tip,关闭后箱内赃物整件保留并说明原因。
 cfg_allow_contraband,允许出售违禁品
@@ -74,3 +75,5 @@ cfg_early_unlock,买店前就显示购买项
 cfg_early_unlock_tip,默认关闭，只在买下店铺后才显示。打开只影响本模组自己的入口。
 cfg_debug_grant,调试模式：新局赠送出货箱
 cfg_debug_grant_tip,默认关闭。每个新开局只赠送一次，普通读档不会重复；空间不足会保留并重试。
+upgrade_pending_recovered,出货箱已自动整理并应用待扩容的 {0}x{1}。
+upgrade_pending_load,旧存档的出货箱暂时保留较大空间，开箱或睡觉时会自动整理并应用当前档位容量。
