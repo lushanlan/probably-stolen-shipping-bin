@@ -7,3 +7,4 @@ obj/
 *.zip
 *.user
 docs/reference/
+local-evidence/

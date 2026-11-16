@@ -1,4 +1,7 @@
-# 出货箱 Mod 验收报告（候选构建，第 5 轮：末档 960、形状迁移安全、正视贴图接入）
+# 出货箱 Mod 验收报告（发行候选 v0.1.0；最新：第 11 轮发行准备与实机最小验收）
+
+> 注：本文中提到的 `docs/il/*.md` 原始 IL 取证报告已移至维护者本地 `local-evidence/il/`（gitignored，不随仓库发布）；公开版结论见 [technical-notes.md](technical-notes.md)。
+
 
 - 日期：2026-11-16
 - 构建：`build\package-dev`（候选开发包，**未做游戏内实机验收**）
@@ -943,3 +946,81 @@ DLL 因 csc 非确定性每次重建会变；manifest 与 csv 稳定。
 | ShippingBin.dll | 69632 | `4032715FF2522288267DE9064E6C4212A85E1043C4378D9EF582132BA8DC3C7B` |
 | Textures\Items\shipping_bin_v2.png | 9608 | `9749E6C3F3434395D960F51A6B718697F6C39E844BD04FF809ADE7E5FBDB03C5` |
 | Textures\Items\shipping_bin.png | 2749 | `B3FF2B16C582429F1C256C649015AE0986F3226348D748538745BAB543AC6B33` |
+
+## 15. 第 11 轮：发行准备与实机最小验收确认
+
+### 15.1 实机确认（维护者回报，范围有限）
+
+以下三项为**确切确认通过**，不外推为全矩阵：
+
+1. `junk` / `scrap_metal` / `metal_ingot` 各拖拽升级一次，分别 +1 / +2 / +5 点，tooltip 立即刷新。
+2. 嵌套在其它容器里的进料斗/出料斗整体保留、不被出售；普通容器仍正常出售。
+3. 次日早间报告显示出货箱件数与销售额，黑色文本。
+
+### 15.2 发行候选
+
+- manifest：`ModVersion=0.1.0`、`GameVersions=0.46D`（读取自本机 `Probably Stolen_Data/globalgamemanagers` 的 PlayerSettings，`ModUIManager.VersionMatchesGame` 会归一化 0.46D → 0.46 比较）。
+- `release.ps1`：真实 build → 组装 9 文件发行目录 → 白名单校验（只允许 manifest.xml / ShippingBin.dll / LICENSE / README.md / CHANGELOG.md 与 `Localization/`、`Textures/` 前缀；拒绝源码、pdb、zip、log、游戏 DLL）→ zip → 子进程重扫 → 写 SHA256SUMS。
+- 修复：`scan.ps1` 在同进程执行会注册 `AppDomain.AssemblyResolve` 处理器，导致后续 `Set-Content` 在解析 PowerShell 卫星资源时递归失败（首次 release 运行 exit 1、SHA256SUMS 未生成）；改为 `pwsh -NoProfile -File tools\scan.ps1 -Package <stage>` 子进程，并用 `[IO.File]::WriteAllLines` 写 UTF-8 无 BOM。
+- `tools/make-workshop-vdf.ps1`：从 `art/wooden-shipping-bin-front.png` 生成 512×512 透明底封面（当前 513,677 B < 1 MB），合并中英描述、转义后填充 VDF（appid 4348910、publishedfileid 0、visibility 2 隐藏）；不登录、不上传。
+
+### 15.3 真实验证输出
+
+```text
+> pwsh -File .\release.ps1
+Built ...\build\ShippingBin.dll
+Manifest ID=lushanlan.shipping_bin; Assemblies=ShippingBin.dll; Capabilities=
+Refused        : False
+MethodsScanned : 234
+Capabilities   : {}
+Findings       : {}
+HardFlags      : {}
+Pending        : {}
+Release candidate: ...\build\release\ShippingBin
+Zip: ...\build\release\ProbablyStolen-ShippingBin-0.1.0.zip
+（9 个文件 + zip，SHA256SUMS 已写入）
+> pwsh -File .\tools\make-workshop-vdf.ps1
+Workshop VDF: ...\build\release\workshop\workshop_item.vdf
+  previewfile  : ...\build\release\workshop\preview.png (513677 bytes)
+  appid 4348910, publishedfileid 0, visibility 2 (2 = hidden)
+```
+
+### 15.4 发行候选哈希（SHA-256）
+
+| 文件 | 字节 | SHA256 |
+| --- | ---: | --- |
+| manifest.xml | 658 | `3B892B5E4C0EA94E9812719DAA7D873AA87C22E41F82ACF5DC1589DED594145C` |
+| ShippingBin.dll | 69,632 | `3DBFBE4CBC635C83AD5D291FA224A6F8CAF37128A0FDB1D1BE5CFA2E2DD6F04E` |
+| LICENSE | 1,066 | `0A03C453DD0D79867A020F33E1F775986E31EB1C5A13B77CCF0800FEEAEF6708` |
+| README.md | 5,911 | `4E9774C76CD9B48FBC4736BD68C46410749035C37B7FBE68A38DC3C2E6A50CDF` |
+| CHANGELOG.md | 2,356 | `779E7EB29F308359DC7A17F0E41072B2CEE96CE2B194D9757D06A3421AAA76A1` |
+| Localization/en.csv | 6,371 | `882793367D4A343A7FA4401047CDF4CC164C028C87533221A7945F2CF75BB8E3` |
+| Localization/zh.csv | 5,914 | `396FD08A5812C07938DC9C94FD9D6FD799B8FCF795EC6499D0C71B3B607A1570` |
+| Textures/Items/shipping_bin_v2.png | 9,608 | `9749E6C3F3434395D960F51A6B718697F6C39E844BD04FF809ADE7E5FBDB03C5` |
+| Textures/Items/shipping_bin.png | 2,749 | `B3FF2B16C582429F1C256C649015AE0986F3226348D748538745BAB543AC6B33` |
+| ProbablyStolen-ShippingBin-0.1.0.zip | 54,089 | `DC4E3863BA348CF1CAC0740B958771EE74714BC88685FA535EFF7A027BF221E5` |
+| workshop/preview.png | 513,677 | `06BA3235D550AFA380A4BD11A6A57CC3256CAA38E491713CFA08B64310F5420C` |
+| workshop/workshop_item.vdf | — | `5467667838DA126C028F81ADE6379F8E9F1467CFC660704C4A5E6EA3F8F37E6D` |
+
+zip 内条目仅 9 个白名单文件，无源码 / IL 文档 / docs / 游戏 DLL。
+
+### 15.5 公开前文档整理
+
+- `docs/il/*.md`（7 份）、`docs/settlement-handoff.md`、`docs/integration-review.md`、`docs/release-plan.md` 已移动到 gitignored 的 `local-evidence/`，原始证据未删除。
+- 新增公开版：`docs/technical-notes.md`（方法引用与结论）、`docs/testing.md`（验证与哈希、实机确认范围）、`docs/release-audit.md`（审计清单与敏感扫描结论）、`docs/workshop.md`（工坊发布清单）。
+- `.gitignore` 增加 `local-evidence/`；README 文档索引与 HANDOFF 已同步。
+- 敏感信息扫描（工作树 + 全部 134 个 loose object）：未发现真实密钥/凭据；命中仅为 tag 名、文档命令占位符、GitHub noreply 邮箱、不含 userinfo 的远端 URL。历史提交仍含 IL 文档，按用户要求未改写历史。
+
+### 15.6 改动文件（第 11 轮）
+
+新增：`release.ps1`、`tools/make-workshop-vdf.ps1`、`packaging/release/README.md`、`packaging/release/CHANGELOG.md`、`packaging/workshop/{description.zh.txt,description.en.txt,workshop.vdf.template}`、`docs/{technical-notes,testing,release-audit,workshop}.md`、`local-evidence/README.md`（gitignored）。
+修改：`packaging/manifest.xml`（0.1.0 + GameVersions 0.46D + Description）、`.gitignore`、`README.md`、`docs/HANDOFF.md`、`docs/acceptance.md`、`docs/decisions-shipping-bin.md`。
+
+### 15.7 剩余发行阻塞（诚实列出）
+
+1. 结算失败后的持久记账“至多一次”恢复未在真实崩溃/断电场景验证；不能以“写了日志”替代保证。
+2. 32×30 内容窗口在低分辨率下可能超出屏幕（原版窗口无滚动）。
+3. 旧存档 2×2 占格箱子不会自动变 4×4（避免与邻格物品重叠）。
+4. 料斗保护只覆盖原版 `hopper_in`/`hopper_out`。
+5. git 历史仍含 IL 文档，需要维护者在公开前清理。
+6. `GameVersions=0.46D` 在游戏更新后会显示版本不匹配，但不阻止加载。

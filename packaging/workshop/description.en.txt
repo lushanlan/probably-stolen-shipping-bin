@@ -1,0 +1,33 @@
+# Steam Workshop description (English)
+
+Shipping Bin — a movable container that sells your goods overnight.
+
+Drop items in, sleep, and everything sellable is sold in one pass. Each bin upgrades independently, from the vanilla Storage Bay size (10x10) up to 960 cells. Handy for bulk clearing, stolen goods, contraband and mislabelled stock (whether they sell and how crime is counted is up to your settings).
+
+## Features
+
+- Settlement only on sleep; closing the store or leaving does not sell anything, and you can take items back before sleeping.
+- Containers sell as a single item; if any descendant is not sellable, the whole root is kept and the morning report explains why.
+- Reuses vanilla valuation: default price is 0.8x the displayed current value (configurable), including container contents, locked-item exclusion, `IGNORE_CHILD_VALUE` and store events.
+- Stolen/contraband toggles (default on), configurable crime multiplier, and Black Market reputation thresholds (>=100 halves, >=200 exempts). Mislabelled sales cost a small Black Market reputation penalty (1% of the night's sales, 1-20).
+- Four capacity tiers: 10x10 -> 17x10 at 25 pts -> 17x20 at 100 pts -> 32x30 (960 cells) at 300 pts. Old larger bins are never shrunk.
+- Upgrade by dragging `junk` / `scrap_metal` / `metal_ingot`; hover the bin to see progress and actual capacity.
+- Bought from the Wild Network (2000 favor) after owning the store; insufficient inventory space is blocked before payment.
+- Vanilla automation hoppers (`hopper_in` / `hopper_out`) are never sold; the morning report shows items sold and total sales.
+- Chinese and English UI text following the game language.
+
+## Install
+
+Extract into `Mods\shipping-bin\` so that `manifest.xml` and `ShippingBin.dll` are in that folder, then restart the game.
+
+## Uninstall
+
+Empty and dispose of any shipping bins in your save first, then delete the mod folder, so the save does not keep unknown items.
+
+## Known limitations
+
+- The persistent "at most once" recovery for failed settlements has not been verified in a real crash/power-loss scenario.
+- The 32x30 content window can be wide on low resolutions (the vanilla window has no scrolling).
+- Bins saved as 2x2 footprint stay 2x2; they are not migrated to 4x4 to avoid overlapping neighbours.
+
+Original code of this mod is MIT-licensed; the game and third-party assets are not relicensed. The bin sprite is AI-generated.

@@ -3,15 +3,32 @@
 《深空当铺 / Probably Stolen》的一个容器类 Mod：买一个可移动、占背包格的出货箱，把想卖的东西放进去，**睡觉时**统一出售；多个箱子各自独立升级容量。
 
 - Mod ID：`lushanlan.shipping_bin`
-- 版本：`0.1.0-dev`（**候选构建，尚未实机验收；请不要用于正式存档**）
+- 版本：`0.1.0`（**发行候选**；已在独立测试档案中完成最小实机确认，范围见 [docs/testing.md](docs/testing.md)）
 - 作者：lushanlan
 - 依赖：游戏本体；无第三方库（Harmony 使用游戏自带 `0Harmony.dll`）
 
 ## 当前状态
 
-已完成：规则层（纯 C#，游戏外可测）、游戏适配层（物品工厂/夜间结算事务/购买/升级/调试赠送/本地化/配置）、真实编译、打包、官方 ModScanner 静态验证。
+已完成：规则层（纯 C#，游戏外可测，411 checks）、游戏适配层（物品工厂/夜间结算事务/购买/升级/调试赠送/本地化/配置/动态 tooltip/料斗保护/拖拽升级补丁）、真实编译、开发包、官方 ModScanner 静态验证（234 方法）、独立发行目录与 zip、创意工坊 VDF 与封面生成脚本。
 
-未完成（需要实机验收）：游戏内放置、开箱 UI、拖入材料升级、购买界面按钮、睡觉结算的实际表现、存读档往返。详见 [docs/acceptance.md](docs/acceptance.md) 的"未验证风险"与"最小实机验收步骤"。
+游戏内已确认（维护者实机回报，**不扩写为全矩阵**）：
+
+1. `junk` / `scrap_metal` / `metal_ingot` 各拖拽一次，分别 +1 / +2 / +5 点，tooltip 立即刷新。
+2. 嵌套在其它容器里的进料斗/出料斗整体保留、不出售；普通容器仍正常出售。
+3. 次日早间报告显示出货箱件数与销售额，黑色字。
+
+未在游戏中逐项验证的内容（结算失败恢复的真实崩溃场景、32×30 窗口低分辨率表现、旧 2×2 箱子与新 4×4 箱子混用、其它模组物流容器、完整犯罪矩阵等）见 [docs/testing.md](docs/testing.md) 的“未验证/未覆盖”。
+
+发行候选：
+
+| 产物 | 路径 |
+| --- | --- |
+| 发行目录 | `build\release\ShippingBin\`（9 个文件） |
+| 安装 zip | `build\release\ProbablyStolen-ShippingBin-0.1.0.zip` |
+| 哈希清单 | `build\release\SHA256SUMS.txt` |
+| 工坊文件 | `build\release\workshop\preview.png`、`workshop_item.vdf` |
+
+生成命令：`pwsh -File .\release.ps1`、`pwsh -File .\tools\make-workshop-vdf.ps1`（不登录、不上传）。
 
 ## 玩法
 
@@ -26,7 +43,7 @@
 
 - 售价 = 物品**当前状态显示估值** × 0.8（可配置；估值直接复用原版整树估值，含容器后代、锁后物品排除、`IGNORE_CHILD_VALUE`、商店事件、液体容器价）。
 - 容器按"一件物品"整体出售；只要**任一后代**不可出售，整个待售根保留并给出中文原因。
-- 保护（只用原生可证实的信号）：剧情关键物（运行时读取原版 `importantStoryItemIds`，两条数据）、当前激活委托单 `StoreRequest.CanThisItemFillRequest` 命中的物品、`NOT_FOR_RESALE`、`MODULE_STUCK`、危险废物、上锁物品、非玩家物品、出货箱自身与嵌套出货箱、原版自动化料斗（进料斗 hopper_in / 出料斗 hopper_out）。**注意**：`IMPORTANT_TAG` 与 `MACHINE`/`DOCUMENT` 都**不**作为拒售条件——IL 证实原版销售通道没有任何类型检查，只有"以物抵债 Repo"才拒机器/文件，而 Repo 是高利贷催收专用。证据见 [docs/il/quest-protection.md](docs/il/quest-protection.md)。
+- 保护（只用原生可证实的信号）：剧情关键物（运行时读取原版 `importantStoryItemIds`，两条数据）、当前激活委托单 `StoreRequest.CanThisItemFillRequest` 命中的物品、`NOT_FOR_RESALE`、`MODULE_STUCK`、危险废物、上锁物品、非玩家物品、出货箱自身与嵌套出货箱、原版自动化料斗（进料斗 hopper_in / 出料斗 hopper_out）。**注意**：`IMPORTANT_TAG` 与 `MACHINE`/`DOCUMENT` 都**不**作为拒售条件——IL 证实原版销售通道没有任何类型检查，只有"以物抵债 Repo"才拒机器/文件，而 Repo 是高利贷催收专用。证据与结论见 [docs/technical-notes.md](docs/technical-notes.md)（公开版）；原始 IL 摘录保存在维护者本地 `local-evidence/`，不随仓库发布。
 - 赃物 / 违禁品各自有开关，默认开启。
 - 涉案：以原版基础涉案金额（`GetNegociatedValue` × `STOLEN_VALUE_INT%`）为基准，默认 ×2；违禁品固定按原版 1:1 计，不套用赃物公式，也不提供额外倍率设置。
 - 黑市声望快照：整晚所有箱子都用**睡觉开始时**的声望。≥100 减半、≥200 全免，两个开关默认开，全免优先；关闭全免后 200 仍减半。
@@ -85,20 +102,27 @@ src\Game\      游戏适配层：ModIds / Loc / ModSettings / BinItem / BinWorld
                BinTooltip / UpgradeDragPatch
 src\ShippingBinMod.cs   IMod 入口（只做装配）
 tests\CoreTests.cs      规则/事务/记账单/形状迁移/进度状态/料斗保护测试（411 checks）
-packaging\              manifest.xml + Localization\{zh,en}.csv
-tools\                  build/扫描/规则测试/IL 调查辅助脚本
-docs\                   决策记录、验收报告、IL 取证报告（docs\il\）
+packaging\              manifest.xml + Localization\{zh,en}.csv + Textures\Items\
+packaging\release\      发行包内的 README / CHANGELOG
+packaging\workshop\     工坊描述与 VDF 模板
+tools\                  build/扫描/规则测试/发行与工坊脚本
+docs\                   公开文档（技术说明、验证记录、发布清单、决策记录、交接）
+local-evidence\         IL 取证原文（gitignored，不随仓库发布）
 ```
 
 ## 文档
 
-- [docs/acceptance.md](docs/acceptance.md)：改动文件清单、真实验证输出、需求对照、未验证风险、最小实机步骤
-- [docs/decisions-shipping-bin.md](docs/decisions-shipping-bin.md)：决策记录（含本次实现定稿）
-- [docs/il/](docs/il/)：本机程序集 IL 取证报告（定价、犯罪/保护、Mod API、存档持久化、任务物与禁售证据、容量档位与配置 UI、物品 tooltip 机制）
+- [docs/HANDOFF.md](docs/HANDOFF.md)：**当前交接文档**（做到哪一步、命令、模块地图、最近改动、边界、约定）
+- [docs/testing.md](docs/testing.md)：**真实验证记录**（构建/测试/扫描/发行哈希、实机已确认范围、未验证清单）
+- [docs/technical-notes.md](docs/technical-notes.md)：公开版技术说明（依赖的原版接口与结论，不含反编译正文）
+- [docs/workshop.md](docs/workshop.md)：创意工坊发布清单（VDF 字段、上传步骤、发布前检查）
+- [docs/release-audit.md](docs/release-audit.md)：公开发布前内容审计（分级处置、敏感信息扫描结论、待维护者处理项）
+- [docs/acceptance.md](docs/acceptance.md)：逐轮改动与验证记录（历史轮次保留）
+- [docs/decisions-shipping-bin.md](docs/decisions-shipping-bin.md)：决策记录（含每轮定稿）
 - [docs/art-spec.md](docs/art-spec.md)：出货箱贴图规范（新箱子 `packaging\Textures\Items\shipping_bin_v2.png` 64×64 = 4×4 格；legacy `shipping_bin.png` 32×32 = 2×2 格，供旧存档兼容；每格 16px，透明区不占格）
-- [docs/HANDOFF.md](docs/HANDOFF.md)：**当前交接文档**（做到哪一步、构建/验证命令、模块地图、最近改动、边界、约定）
 - [docs/game-test-checklist.md](docs/game-test-checklist.md)：实机验收勾选清单（按轮次追加）
-- `docs/settlement-handoff.md`、`docs/integration-review.md`：早期原型记录，**不是**当前实现说明
+
+原始 IL 取证、早期交接与内部发行笔记已移动到维护者本地 `local-evidence/`（gitignored），不再随仓库发布。
 
 ## 安全声明
 

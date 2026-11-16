@@ -3,9 +3,12 @@
   <ID>lushanlan.shipping_bin</ID>
   <Name>出货箱</Name>
   <Author>lushanlan</Author>
-  <ModVersion>0.1.0-dev</ModVersion>
-  <Description>可移动的出货箱容器：睡觉时统一出售箱内合法货物，多箱各自升级容量。候选版本，需实机验收，请勿用于正式存档。</Description>
-  <GameVersions />
+  <ModVersion>0.1.0</ModVersion>
+  <Description>可移动的出货箱容器：睡觉时统一出售箱内合法货物，多箱各自升级容量。复用原版容器、估值与犯罪系统。</Description>
+  <GameVersions>
+    <!-- 本机实测 Application.version（= PlayerSettings.bundleVersion，经 UnityPy 读取 globalgamemanagers）为 0.46D。 -->
+    <Version>0.46D</Version>
+  </GameVersions>
   <Prerequisites />
   <Assemblies><Assembly>ShippingBin.dll</Assembly></Assemblies>
   <Capabilities />

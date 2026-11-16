@@ -1,8 +1,8 @@
 # 出货箱 Mod 交接文档（HANDOFF）
 
-> 最后更新：2026-11-16（第 10 轮：第 8/9 轮集成复核修正：拖拽门补丁取参/放行条件、料斗递归补测、本地化键清理、数字校正）。
+> 最后更新：2026-11-16（第 11 轮：发行准备——v0.1.0 候选包、工坊 VDF、公开文档脱敏与审计；实机最小验收通过记录）。
 > 本文件是当前唯一权威的“做到哪一步、怎么构建、改了什么、别碰什么”说明。
-> 早期原型交接见 `docs/settlement-handoff.md`（已过时，仅作历史记录）。
+> 早期原型交接、IL 取证原文与内部发行笔记已移到 gitignored 的 `local-evidence/`（不随仓库发布）。
 
 ## 1. 项目一句话
 
@@ -14,7 +14,9 @@
 - 测试：`tools/test-rules.ps1` 共 **411 checks**（规则/保护/计划/事务/记账单/授予策略/形状迁移/tooltip 状态）。
 - 包：`build/package-dev`（`pwsh -File .\package.ps1` 生成），含 `manifest.xml`、`ShippingBin.dll`、`Localization/{zh,en}.csv`、`Textures/Items/{shipping_bin_v2.png,shipping_bin.png}`。
 - 扫描：`tools/scan.ps1` 真实调用本机 manifest parser 与 ModScanner，最近一次 `MethodsScanned=234`、Findings/HardFlags/Pending 全空、`Refused=False`。
-- 实机：用户已确认“当前实机测试看来没问题”（**仅用户口头反馈，未覆盖全部规则矩阵**）。
+- 发行候选：`build/release/ShippingBin/`（9 文件）+ `build/release/ProbablyStolen-ShippingBin-0.1.0.zip`（54,089 B），哈希见 `build/release/SHA256SUMS.txt` 与 `docs/testing.md`；工坊 VDF/封面由 `tools/make-workshop-vdf.ps1` 生成到 `build/release/workshop/`。
+- manifest：`ModVersion=0.1.0`、`GameVersions=0.46D`（读取自本机 PlayerSettings）。
+- 实机（维护者回报，**不扩写为全矩阵**）：三种材料各拖一次得到 1/2/5 点且 tooltip 刷新；嵌套料斗整根保留而普通容器正常出售；早间报告件数与销售额为黑色。
 
 ## 3. 构建与验证（按顺序）
 
@@ -23,6 +25,8 @@ pwsh -File .\build.ps1        # csc 编译到 build\ShippingBin.dll
 pwsh -File .\tools\test-rules.ps1   # 纯规则层测试（当前 411 checks）
 pwsh -File .\package.ps1      # 组装 build\package-dev
 pwsh -File .\tools\scan.ps1   # manifest + ModScanner 扫描（Refused 必须为 False）
+pwsh -File .\release.ps1      # 发行候选目录 + zip + SHA256SUMS（内部用子进程重扫）
+pwsh -File .\tools\make-workshop-vdf.ps1  # 工坊 VDF + 512 封面（不登录不上传）
 ```
 
 注意：
@@ -63,6 +67,7 @@ pwsh -File .\tools\scan.ps1   # manifest + ModScanner 扫描（Refused 必须为
 - 第 8 轮：`hopper_in`/`hopper_out`（进料斗/出料斗）不再被出售（整根保留并说明原因）；早间报告新增独立“销售额”行。
 - 第 9 轮：金属/材料拖拽升级修复（`UpgradeDragPatch`）；销售额与售出件数改黑色；结算失败不再写入夜间报告（只写模组日志）。
 - 第 10 轮（集成复核）：补丁改用 Harmony `__0` 取参；放行前显式校验“三种材料 + 本模组箱 + 所有权 + 未满级或 pending”；逐条审计 `GameItem.Target` 材料端回调（金属 `OnIngotTarget` 白名单外直接返回，材料只在箱子回调里消耗一次）；料斗递归保护补测（两层容器 + 普通容器不误拦）；删除 5 个失效 `log_commit_*` 文案键（zh/en 各 82 键）；数字校正（411 checks / 234 methods / 8 项配置）。
+- 第 11 轮（发行准备）：`release.ps1` 独立发行目录/zip/哈希（scan 改为子进程，避免 `AppDomain.AssemblyResolve` 泄漏导致 `Set-Content` 失败）；manifest 升 `0.1.0` 并写入 `GameVersions 0.46D`；`packaging/release/{README,CHANGELOG}.md` 与 `packaging/workshop/*`（中英描述 + VDF 模板）；`tools/make-workshop-vdf.ps1` 生成 512×512 封面与隐藏状态 VDF；公开文档重整（`docs/technical-notes.md`、`docs/testing.md`、`docs/release-audit.md`、`docs/workshop.md`），IL 取证原文移入 gitignored `local-evidence/`；敏感信息审计未发现真实凭据。
 
 ## 6. 已知边界 / 未实机验证
 

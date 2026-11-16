@@ -1,5 +1,8 @@
 # 出货箱 Mod 决策记录
 
+> 注：本文中提到的 `docs/il/*.md` 原始 IL 取证报告已移至维护者本地 `local-evidence/il/`（gitignored，不随仓库发布）；公开版结论见 [technical-notes.md](technical-notes.md)。
+
+
 ## 讨论方式
 - 结论：使用 grill 常规强度（2），保留决策记录。
 - 理由：用户明确选择；逐轮补齐会影响方案的重要缺口。
@@ -463,3 +466,36 @@
 - 料斗保护补测：两层容器深处的料斗仍整根保留；普通容器不会被误拦。
 - 保留黑字与“失败只写日志”；清理 5 个失效的 `log_commit_*` 玩家文案键，zh/en 各 82 键且键集一致；动态键（11 个失败阶段、5 个犯罪类型、reason/tooltip）逐一核对存在。
 - `docs/HANDOFF.md` 数字修正：MethodsScanned 234、411 checks、8 项配置（2 数值 + 6 开关）、Game 模块清单补全。
+
+# 第十一轮：发行准备（2026-11-16，DeepSeek Harness）
+
+## 1. 版本与兼容
+
+- 发行版本 `ModVersion=0.1.0`；`GameVersions=0.46D` 来自本机 `Probably Stolen_Data/globalgamemanagers` 的 PlayerSettings `bundleVersion`，不是猜的。
+- `ModUIManager.VersionMatchesGame` 会把版本归一化为“数字与点”（0.46D → 0.46），因此该条目能匹配当前运行版本；游戏更新后可能显示不匹配，但不会阻止加载。
+
+## 2. 发行物与白名单
+
+- 新增 `release.ps1`：真实调用 `build.ps1`，组装独立目录 `build/release/ShippingBin`，执行内容白名单（只有 manifest/DLL/LICENSE/README/CHANGELOG 与 `Localization/`、`Textures/` 前缀），再打 zip，最后写 `SHA256SUMS.txt`。发行包与开发包分开，开发包 `build/package-dev` 保留。
+- `scan.ps1` 必须在子进程调用：它注册 `AppDomain.AssemblyResolve`，同进程调用会让后续 `Set-Content` 在解析 PowerShell 卫星资源时递归失败（首次 release 运行 exit 1、哈希未写出）。改为 `pwsh -NoProfile -File tools\scan.ps1 -Package <stage>` 后正常。
+- 发行说明与变更记录放在 `packaging/release/`，由 release 脚本复制进包内；卸载说明明确“先清空并处理掉存档里的箱子再删 mod”，避免存档残留未知物品。
+
+## 3. 工坊
+
+- `tools/make-workshop-vdf.ps1` 只生成文件、不登录：封面复用正视图源图缩到 512×512（透明底、< 1 MB），中英描述合并并转义后填 VDF 模板。
+- 首次 `publishedfileid=0`、`visibility=2`（隐藏）；由维护者人工登录 SteamCMD 上传、接受工坊协议、记录回写 id 后再公开。
+
+## 4. 公开前脱敏
+
+- IL 取证原文（含反编译片段）移到 gitignored 的 `local-evidence/`，不删除；公开文档只保留方法引用与结论。
+- 敏感信息扫描（工作树 + 134 个 loose object）未发现真实密钥/凭据；历史提交仍含 IL 文档，按用户要求不改写历史、不 push。
+- `docs/release-audit.md` 记录分级处置、误报分类与仍需维护者处理的事项（历史清理、可见性、工坊协议）。
+
+## 5. 实机确认范围
+
+- 维护者确认：三材料 1/2/5 且 tooltip 刷新；嵌套料斗保留、普通容器正常出售；早间报告黑色件数与销售额。
+- 该反馈只作为上述三项的确认，不扩写为“全部规则矩阵已在游戏中验证”；未验证项列在 `docs/testing.md`。
+
+## 6. 边界
+
+- 结算失败恢复、32×30 窗口低分辨率、旧 2×2 箱与新 4×4 箱混用、非原版料斗、完整犯罪组合仍属未验证范围。
