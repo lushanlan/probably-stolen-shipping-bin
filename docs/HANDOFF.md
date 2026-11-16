@@ -1,6 +1,6 @@
 # 出货箱 Mod 交接文档（HANDOFF）
 
-> 最后更新：2026-11-16（第 11 轮：发行准备——v0.1.0 候选包、工坊 VDF、公开文档脱敏与审计；实机最小验收通过记录）。
+> 最后更新：2026-11-16（v0.1.0 已公开发行；维护入口见 [MAINTENANCE.md](MAINTENANCE.md)，新对话模板见 [NEW-CHAT-PROMPT.md](NEW-CHAT-PROMPT.md)，发布记录见 [published-release.md](published-release.md)）。
 > 本文件是当前唯一权威的“做到哪一步、怎么构建、改了什么、别碰什么”说明。
 > 早期原型交接、IL 取证原文与内部发行笔记已移到 gitignored 的 `local-evidence/`（不随仓库发布）。
 
@@ -79,7 +79,7 @@ pwsh -File .\tools\make-workshop-vdf.ps1  # 工坊 VDF + 512 封面（不登录�
 
 ## 7. 约定（不要做）
 
-- 不安装、不 push、不发布 Steam；仓库由用户维护。
+- Harness 不自行安装、push 或发布；主代理负责验收，并按用户对当前任务的授权维护 GitHub/工坊。仓库及 v0.1.0 已公开，日常更新不要重新创建工坊条目或重写 Git 历史。
 - 不改 `art/` 目录、不重画素材；贴图由用户提供正视图后经脚本降采样接入。
 - 不改原版程序集、不动正式玩家存档；实机只用独立测试档。
 - 新增用户可见文本必须同时补 `packaging/Localization/zh.csv` 与 `en.csv`，且键集保持一致。
